@@ -1,0 +1,11 @@
+/yt
+yt/**/proto/**.pb.go
+binaries
+report
+/yt/
+**/ya.make
+**/*.secret.yaml
+.idea
+docs-html
+_docs-lint
+trcli
