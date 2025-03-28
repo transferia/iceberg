@@ -47,7 +47,7 @@ func (p *Provider) Sink(config middlewares.Config) (abstract.Sinker, error) {
 	if config.ReplicationStage {
 		return nil, xerrors.New("Replication stage not supported")
 	}
-	return NewSink(p.transfer.Dst.(*Destination), p.cp, p.transfer)
+	return NewSinkSnapshot(p.transfer.Dst.(*Destination), p.cp, p.transfer)
 }
 
 func (p Provider) Type() abstract.ProviderType {

@@ -33,10 +33,10 @@ import (
 
 // To verify providers contract implementation
 var (
-	_ abstract.Sinker = (*Sink)(nil)
+	_ abstract.Sinker = (*SinkSnapshot)(nil)
 )
 
-type Sink struct {
+type SinkSnapshot struct {
 	cfg        *Destination
 	catalog    catalog.Catalog
 	ctx        context.Context
@@ -50,7 +50,7 @@ type Sink struct {
 }
 
 // Close implements abstract.Sinker.
-func (s *Sink) Close() error {
+func (s *SinkSnapshot) Close() error {
 	if s.cancelFunc != nil {
 		s.cancelFunc()
 	}
@@ -58,7 +58,7 @@ func (s *Sink) Close() error {
 }
 
 // Push implements abstract.Sinker.
-func (s *Sink) Push(items []abstract.ChangeItem) error {
+func (s *SinkSnapshot) Push(items []abstract.ChangeItem) error {
 	if len(items) == 0 {
 		return nil
 	}
@@ -84,7 +84,7 @@ func (s *Sink) Push(items []abstract.ChangeItem) error {
 	return nil
 }
 
-func (s *Sink) processTable(items []abstract.ChangeItem) error {
+func (s *SinkSnapshot) processTable(items []abstract.ChangeItem) error {
 	// Skip if no items
 	if len(items) == 0 {
 		return nil
@@ -172,11 +172,11 @@ func (s *Sink) processTable(items []abstract.ChangeItem) error {
 	return s.writeDataToTable(ctx, tbl, items)
 }
 
-func (s *Sink) createTableIdent(item abstract.ChangeItem) table.Identifier {
+func (s *SinkSnapshot) createTableIdent(item abstract.ChangeItem) table.Identifier {
 	return table.Identifier{item.Schema, item.Table}
 }
 
-func (s *Sink) ensureTable(ctx context.Context, item abstract.ChangeItem) (*table.Table, error) {
+func (s *SinkSnapshot) ensureTable(ctx context.Context, item abstract.ChangeItem) (*table.Table, error) {
 	tbl := s.createTableIdent(item)
 
 	existingTable, err := s.catalog.LoadTable(ctx, tbl, iceberg.Properties{})
@@ -196,7 +196,7 @@ func (s *Sink) ensureTable(ctx context.Context, item abstract.ChangeItem) (*tabl
 	return itable, nil
 }
 
-func (s *Sink) writeDataToTable(ctx context.Context, tbl *table.Table, items []abstract.ChangeItem) error {
+func (s *SinkSnapshot) writeDataToTable(ctx context.Context, tbl *table.Table, items []abstract.ChangeItem) error {
 	if len(items) == 0 {
 		return nil
 	}
@@ -205,7 +205,7 @@ func (s *Sink) writeDataToTable(ctx context.Context, tbl *table.Table, items []a
 	}, backoff.NewExponentialBackOff())
 }
 
-func (s *Sink) writeBatch(ctx context.Context, tbl *table.Table, items []abstract.ChangeItem) error {
+func (s *SinkSnapshot) writeBatch(ctx context.Context, tbl *table.Table, items []abstract.ChangeItem) error {
 	if len(items) == 0 {
 		return nil
 	}
@@ -243,7 +243,7 @@ func (s *Sink) writeBatch(ctx context.Context, tbl *table.Table, items []abstrac
 	return nil
 }
 
-func (s *Sink) fileName(tbl *table.Table) string {
+func (s *SinkSnapshot) fileName(tbl *table.Table) string {
 	insertNum := s.loadInsertNum()
 	return fmt.Sprintf(
 		"%s/%s/%s/%05d-%d-%s-%d-%05d.parquet",
@@ -258,14 +258,14 @@ func (s *Sink) fileName(tbl *table.Table) string {
 	)
 }
 
-func (s *Sink) loadInsertNum() int {
+func (s *SinkSnapshot) loadInsertNum() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.insertNum++
 	return s.insertNum
 }
 
-func (s *Sink) storeFile(name string) {
+func (s *SinkSnapshot) storeFile(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.files = append(s.files, name)
@@ -471,7 +471,7 @@ func convertToIcebergSchema(schema *abstract.TableSchema) (*iceberg.Schema, erro
 	return icebergSchema, nil
 }
 
-func NewSink(cfg *Destination, cp coordinator.Coordinator, transfer *model.Transfer) (*Sink, error) {
+func NewSinkSnapshot(cfg *Destination, cp coordinator.Coordinator, transfer *model.Transfer) (*SinkSnapshot, error) {
 	var cat catalog.Catalog
 	if cfg.CatalogType == "rest" {
 		var err error
@@ -485,7 +485,7 @@ func NewSink(cfg *Destination, cp coordinator.Coordinator, transfer *model.Trans
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &Sink{
+	return &SinkSnapshot{
 		cfg:        cfg,
 		catalog:    cat,
 		ctx:        ctx,
