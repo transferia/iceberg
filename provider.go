@@ -2,6 +2,7 @@ package iceberg
 
 import (
 	"encoding/gob"
+	"github.com/transferia/transferia/pkg/abstract/coordinator"
 
 	"github.com/transferia/transferia/library/go/core/metrics"
 	"github.com/transferia/transferia/library/go/core/xerrors"
@@ -31,17 +32,22 @@ func init() {
 		return new(Destination)
 	})
 	abstract.RegisterProviderName(ProviderType, "Iceberg")
+	providers.Register(ProviderType, New)
 }
 
 type Provider struct {
 	logger   log.Logger
 	registry metrics.Registry
 	transfer *model.Transfer
+	cp       coordinator.Coordinator
 }
 
 // Sink implements providers.Sinker.
 func (p *Provider) Sink(config middlewares.Config) (abstract.Sinker, error) {
-	return NewSink(p.transfer.Dst.(*Destination))
+	if config.ReplicationStage {
+		return nil, xerrors.New("Replication stage not supported")
+	}
+	return NewSink(p.transfer.Dst.(*Destination), p.cp, p.transfer)
 }
 
 func (p Provider) Type() abstract.ProviderType {
@@ -55,4 +61,13 @@ func (p Provider) Storage() (abstract.Storage, error) {
 	}
 
 	return NewStorage(src, p.logger, p.registry)
+}
+
+func New(lgr log.Logger, registry metrics.Registry, cp coordinator.Coordinator, transfer *model.Transfer) providers.Provider {
+	return &Provider{
+		logger:   lgr,
+		registry: registry,
+		transfer: transfer,
+		cp:       cp,
+	}
 }

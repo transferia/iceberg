@@ -3,24 +3,31 @@ package iceberg
 import (
 	"context"
 	"fmt"
-	"github.com/goccy/go-json"
-	"github.com/spf13/cast"
+	"strings"
+	"sync"
 	"time"
+
+	"github.com/goccy/go-json"
+	"github.com/google/uuid"
+	"github.com/spf13/cast"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/parquet/pqarrow"
-	"github.com/apache/iceberg-go/io"
 
 	"github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/catalog"
 	"github.com/apache/iceberg-go/catalog/glue"
 	"github.com/apache/iceberg-go/catalog/rest"
+	"github.com/apache/iceberg-go/io"
 	"github.com/apache/iceberg-go/table"
+
 	"github.com/cenkalti/backoff/v4"
 	"github.com/transferia/transferia/library/go/core/xerrors"
 	"github.com/transferia/transferia/pkg/abstract"
+	"github.com/transferia/transferia/pkg/abstract/coordinator"
+	"github.com/transferia/transferia/pkg/abstract/model"
 	yt_schema "go.ytsaurus.tech/yt/go/schema"
 )
 
@@ -34,6 +41,12 @@ type Sink struct {
 	catalog    catalog.Catalog
 	ctx        context.Context
 	cancelFunc context.CancelFunc
+	mu         sync.Mutex
+	insertNum  int
+	workerNum  int // TODO: pass worker index
+	files      []string
+	cp         coordinator.Coordinator
+	transfer   *model.Transfer
 }
 
 // Close implements abstract.Sinker.
@@ -63,7 +76,7 @@ func (s *Sink) Push(items []abstract.ChangeItem) error {
 
 	// Process each table
 	for tableID, tableItems := range tableGroups {
-		if err := s.processTable(tableID, tableItems); err != nil {
+		if err := s.processTable(tableItems); err != nil {
 			return xerrors.Errorf("processing table %s: %w", tableID, err)
 		}
 	}
@@ -71,7 +84,7 @@ func (s *Sink) Push(items []abstract.ChangeItem) error {
 	return nil
 }
 
-func (s *Sink) processTable(tableID string, items []abstract.ChangeItem) error {
+func (s *Sink) processTable(items []abstract.ChangeItem) error {
 	// Skip if no items
 	if len(items) == 0 {
 		return nil
@@ -84,9 +97,38 @@ func (s *Sink) processTable(tableID string, items []abstract.ChangeItem) error {
 	// Handle table operations (create, drop, truncate)
 	for _, item := range items {
 		switch item.Kind {
+		case abstract.DoneTableLoad:
+			if err := s.cp.SetTransferState(s.transfer.ID, map[string]*coordinator.TransferStateData{
+				fmt.Sprintf("files_for_%v", s.workerNum): {Generic: s.files},
+			}); err != nil {
+				return xerrors.Errorf("set transfer state: %w", err)
+			}
+			return nil
 		case abstract.DoneShardedTableLoad:
-			// TODO: commit all files into table
+			state, err := s.cp.GetTransferState(s.transfer.ID)
+			if err != nil {
+				return xerrors.Errorf("get transfer state: %w", err)
+			}
+			var files []string
+			for k, v := range state {
+				if !strings.Contains(k, "files_for_") {
+					continue
+				}
+				files = append(files, v.Generic.([]string)...)
+			}
+			tbl, err := s.ensureTable(ctx, item)
+			if err != nil {
+				return xerrors.Errorf("ensure table: %w", err)
+			}
+			tx := tbl.NewTransaction()
+			if err := tx.AddFiles(files, s.cfg.SnapshotProps, false); err != nil {
+				return xerrors.Errorf("add files: %w", err)
+			}
 
+			if _, err := tx.Commit(ctx); err != nil {
+				return xerrors.Errorf("commit transaction: %w", err)
+			}
+			return nil
 		case abstract.DropTableKind, abstract.TruncateTableKind:
 			tblIdent := s.createTableIdent(item)
 
@@ -171,7 +213,8 @@ func (s *Sink) writeBatch(ctx context.Context, tbl *table.Table, items []abstrac
 	if !ok {
 		return xerrors.Errorf("%T does not implement io.WriteFileIO", tbl.FS())
 	}
-	fw, err := fileIO.Create(fmt.Sprintf("TODO:define_file_path", tbl))
+	fName := s.fileName(tbl)
+	fw, err := fileIO.Create(fName)
 	if err != nil {
 		return xerrors.Errorf("create file writer: %w", err)
 	}
@@ -196,7 +239,36 @@ func (s *Sink) writeBatch(ctx context.Context, tbl *table.Table, items []abstrac
 	if err := pw.Write(toArrowRows(items, arrSchema)); err != nil {
 		return xerrors.Errorf("write rows: %w", err)
 	}
+	s.storeFile(fName)
 	return nil
+}
+
+func (s *Sink) fileName(tbl *table.Table) string {
+	insertNum := s.loadInsertNum()
+	return fmt.Sprintf(
+		"%s/%s/%s/%05d-%d-%s-%d-%05d.parquet",
+		s.cfg.Prefix,
+		tbl.Identifier()[0],
+		tbl.Identifier()[1],
+		insertNum/10,
+		insertNum%10,
+		uuid.New().String(),
+		s.workerNum/10000,
+		s.workerNum%10000,
+	)
+}
+
+func (s *Sink) loadInsertNum() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.insertNum++
+	return s.insertNum
+}
+
+func (s *Sink) storeFile(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.files = append(s.files, name)
 }
 
 func toArrowRows(items []abstract.ChangeItem, schema *arrow.Schema) arrow.Record {
@@ -399,7 +471,7 @@ func convertToIcebergSchema(schema *abstract.TableSchema) (*iceberg.Schema, erro
 	return icebergSchema, nil
 }
 
-func NewSink(cfg *Destination) (*Sink, error) {
+func NewSink(cfg *Destination, cp coordinator.Coordinator, transfer *model.Transfer) (*Sink, error) {
 	var cat catalog.Catalog
 	if cfg.CatalogType == "rest" {
 		var err error
@@ -418,5 +490,11 @@ func NewSink(cfg *Destination) (*Sink, error) {
 		catalog:    cat,
 		ctx:        ctx,
 		cancelFunc: cancel,
+		mu:         sync.Mutex{},
+		insertNum:  0,
+		workerNum:  0,
+		files:      nil,
+		cp:         cp,
+		transfer:   transfer,
 	}, nil
 }

@@ -12,10 +12,12 @@ var (
 )
 
 type Destination struct {
-	Properties  iceberg.Properties
-	CatalogType string
-	CatalogURI  string
-	Schema      string
+	Properties    iceberg.Properties
+	SnapshotProps iceberg.Properties
+	CatalogType   string
+	CatalogURI    string
+	Schema        string
+	Prefix        string
 }
 
 // CleanupMode implements model.Destination.
