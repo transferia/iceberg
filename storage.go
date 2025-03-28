@@ -30,7 +30,7 @@ var (
 const defaultReadBatchSize = 10 * 1024
 
 type Storage struct {
-	cfg      *IcebergSource
+	cfg      *Source
 	logger   log.Logger
 	registry metrics.Registry
 	props    iceberg.Properties
@@ -123,12 +123,12 @@ func (s *Storage) TableSchema(ctx context.Context, tid abstract.TableID) (*abstr
 
 func (s *Storage) TableList(filter abstract.IncludeTableList) (abstract.TableMap, error) {
 	res := abstract.TableMap{}
-	
+
 	for tbl, err := range s.cat.ListTables(context.TODO(), table.Identifier{s.cfg.Schema}) {
 		if err != nil {
 			return nil, xerrors.Errorf("error listing tables: %w", err)
 		}
-		
+
 		if filter != nil && !filter.Include(s.AsTableID(tbl)) {
 			continue
 		}
@@ -150,7 +150,7 @@ func (s *Storage) TableList(filter abstract.IncludeTableList) (abstract.TableMap
 			Schema: s.FromIcebergSchema(itable.Schema()),
 		}
 	}
-	
+
 	return res, nil
 }
 
@@ -240,7 +240,7 @@ func trimSuffix(s string) string {
 	return sss[0]
 }
 
-func NewStorage(src *IcebergSource, logger log.Logger, registry metrics.Registry) (*Storage, error) {
+func NewStorage(src *Source, logger log.Logger, registry metrics.Registry) (*Storage, error) {
 	var cat catalog.Catalog
 	if src.CatalogType == "rest" {
 		var err error

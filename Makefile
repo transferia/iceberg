@@ -34,3 +34,12 @@ run-tests:
 	  --format github-actions \
 	  --packages="." \
 	  -- -timeout=15m; \
+
+.PHONY: recipe
+recipe:
+	docker compose -f recipe/docker-compose.yml up -d
+	sleep 5
+	docker compose -f recipe/docker-compose.yml exec -T spark-iceberg ipython ./provision.py
+	sleep 5
+	echo "AWS_S3_ENDPOINT=http://$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' minio):9000"
+	echo "CATALOG_ENDPOINT=http://$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' iceberg-rest):8181"
