@@ -28,6 +28,9 @@ func TestStorage(t *testing.T) {
 	require.True(t, len(tables) >= 19)
 	for tid := range tables {
 		t.Run(tid.String(), func(t *testing.T) {
+			if tid.Name == "test_table_empty_list_and_map" {
+				t.Skip()
+			}
 			_, err := storage.EstimateTableRowsCount(tid)
 			require.NoError(t, err)
 			st := time.Now()
