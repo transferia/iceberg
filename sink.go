@@ -2,6 +2,10 @@ package iceberg
 
 import (
 	"context"
+	"fmt"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/parquet/pqarrow"
+	"github.com/apache/iceberg-go/io"
 	"time"
 
 	"github.com/apache/iceberg-go"
@@ -75,6 +79,9 @@ func (s *Sink) processTable(tableID string, items []abstract.ChangeItem) error {
 	// Handle table operations (create, drop, truncate)
 	for _, item := range items {
 		switch item.Kind {
+		case abstract.DoneShardedTableLoad:
+			// TODO: commit all files into table
+
 		case abstract.DropTableKind, abstract.TruncateTableKind:
 			tblIdent := s.createTableIdent(item)
 
@@ -156,10 +163,39 @@ func (s *Sink) writeBatch(ctx context.Context, tbl *table.Table, items []abstrac
 	if len(items) == 0 {
 		return nil
 	}
+	fileIO, ok := tbl.FS().(io.WriteFileIO)
+	if !ok {
+		return xerrors.Errorf("%T does not implement io.WriteFileIO", tbl.FS())
+	}
+	fw, err := fileIO.Create(fmt.Sprintf("TODO:define_file_path", tbl))
+	if err != nil {
+		return xerrors.Errorf("create file writer: %w", err)
+	}
+	arrSchema, err := table.SchemaToArrowSchema(
+		tbl.Schema(),
+		map[string]string{},
+		false,
+		false,
+	)
+	if err != nil {
+		return xerrors.Errorf("convert to ArrowSchema: %w", err)
+	}
+	pw, err := pqarrow.NewFileWriter(
+		arrSchema,
+		fw,
+		nil,
+		pqarrow.DefaultWriterProps(),
+	)
+	if err != nil {
+		return xerrors.Errorf("create array writer: %w", err)
+	}
+	if err := pw.Write(toArrowRows(items, arrSchema)); err != nil {
+		return xerrors.Errorf("write rows: %w", err)
+	}
+	return nil
+}
 
-	// В минималистичной реализации просто возвращаем nil
-	// TODO: Реализовать запись батча в таблицу
-
+func toArrowRows(items []abstract.ChangeItem, schema *arrow.Schema) arrow.Record {
 	return nil
 }
 
