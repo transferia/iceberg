@@ -2,10 +2,11 @@ package iceberg
 
 import (
 	"context"
+	"strings"
+
 	"github.com/apache/iceberg-go/catalog/glue"
 	"github.com/apache/iceberg-go/catalog/rest"
 	"github.com/transferia/transferia/pkg/abstract/changeitem"
-	"strings"
 
 	"github.com/apache/iceberg-go/catalog"
 	"github.com/apache/iceberg-go/table"
@@ -121,12 +122,13 @@ func (s *Storage) TableSchema(ctx context.Context, tid abstract.TableID) (*abstr
 }
 
 func (s *Storage) TableList(filter abstract.IncludeTableList) (abstract.TableMap, error) {
-	tbls, err := s.cat.ListTables(context.TODO(), table.Identifier{s.cfg.Schema})
-	if err != nil {
-		return nil, xerrors.Errorf("unable to list table: %w", err)
-	}
 	res := abstract.TableMap{}
-	for _, tbl := range tbls {
+	
+	for tbl, err := range s.cat.ListTables(context.TODO(), table.Identifier{s.cfg.Schema}) {
+		if err != nil {
+			return nil, xerrors.Errorf("error listing tables: %w", err)
+		}
+		
 		if filter != nil && !filter.Include(s.AsTableID(tbl)) {
 			continue
 		}
@@ -148,6 +150,7 @@ func (s *Storage) TableList(filter abstract.IncludeTableList) (abstract.TableMap
 			Schema: s.FromIcebergSchema(itable.Schema()),
 		}
 	}
+	
 	return res, nil
 }
 
