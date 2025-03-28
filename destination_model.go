@@ -1,6 +1,7 @@
 package iceberg
 
 import (
+	"github.com/apache/iceberg-go"
 	"github.com/transferia/transferia/pkg/abstract"
 	"github.com/transferia/transferia/pkg/abstract/model"
 )
@@ -11,6 +12,10 @@ var (
 )
 
 type Destination struct {
+	Properties  iceberg.Properties
+	CatalogType string
+	CatalogURI  string
+	Schema      string
 }
 
 // CleanupMode implements model.Destination.
