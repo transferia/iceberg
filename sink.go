@@ -12,6 +12,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/transferia/transferia/library/go/core/xerrors"
 	"github.com/transferia/transferia/pkg/abstract"
+	yt_schema "go.ytsaurus.tech/yt/go/schema"
 )
 
 // To verify providers contract implementation
@@ -163,9 +164,67 @@ func (s *Sink) writeBatch(ctx context.Context, tbl *table.Table, items []abstrac
 }
 
 func convertToIcebergSchema(schema *abstract.TableSchema) (*iceberg.Schema, error) {
-	// TODO: Реализовать конвертацию схемы из abstract.TableSchema в iceberg.Schema
-	// В минималистичной реализации просто возвращаем nil, nil
-	return nil, nil
+	if schema == nil {
+		return nil, xerrors.New("schema is nil")
+	}
+
+	var fields []iceberg.NestedField
+	var identifierFieldIDs []int
+
+	nextID := 1 // probably shall use schema registry
+
+	for _, col := range schema.Columns() {
+		var fieldType iceberg.Type
+		switch col.DataType {
+		case yt_schema.TypeInt64.String():
+			fieldType = iceberg.PrimitiveTypes.Int64
+		case yt_schema.TypeInt32.String():
+			fieldType = iceberg.PrimitiveTypes.Int32
+		case yt_schema.TypeInt16.String(), yt_schema.TypeInt8.String():
+			fieldType = iceberg.PrimitiveTypes.Int32
+		case yt_schema.TypeUint64.String(), yt_schema.TypeUint32.String():
+			fieldType = iceberg.PrimitiveTypes.Int64
+		case yt_schema.TypeUint16.String(), yt_schema.TypeUint8.String():
+			fieldType = iceberg.PrimitiveTypes.Int32
+		case yt_schema.TypeFloat32.String():
+			fieldType = iceberg.PrimitiveTypes.Float32
+		case yt_schema.TypeFloat64.String():
+			fieldType = iceberg.PrimitiveTypes.Float64
+		case yt_schema.TypeBytes.String():
+			fieldType = iceberg.PrimitiveTypes.Binary
+		case yt_schema.TypeString.String():
+			fieldType = iceberg.PrimitiveTypes.String
+		case yt_schema.TypeBoolean.String():
+			fieldType = iceberg.PrimitiveTypes.Bool
+		case yt_schema.TypeDate.String():
+			fieldType = iceberg.PrimitiveTypes.Date
+		case yt_schema.TypeDatetime.String(), yt_schema.TypeTimestamp.String():
+			fieldType = iceberg.PrimitiveTypes.TimestampTz
+		default:
+			// JSON-based string
+			fieldType = iceberg.PrimitiveTypes.String
+		}
+
+		field := iceberg.NestedField{
+			ID:       nextID,
+			Name:     col.ColumnName,
+			Type:     fieldType,
+			Required: col.Required,
+		}
+
+		if col.PrimaryKey {
+			identifierFieldIDs = append(identifierFieldIDs, nextID)
+		}
+
+		fields = append(fields, field)
+		nextID++
+	}
+
+	// for now all schemas have version 1
+	icebergSchema := iceberg.NewSchema(1, fields...)
+	icebergSchema.IdentifierFieldIDs = identifierFieldIDs
+
+	return icebergSchema, nil
 }
 
 func NewSink(cfg *Destination) (*Sink, error) {
