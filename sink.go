@@ -492,7 +492,7 @@ func NewSink(cfg *Destination, cp coordinator.Coordinator, transfer *model.Trans
 		cancelFunc: cancel,
 		mu:         sync.Mutex{},
 		insertNum:  0,
-		workerNum:  0,
+		workerNum:  transfer.CurrentJobIndex(),
 		files:      nil,
 		cp:         cp,
 		transfer:   transfer,
