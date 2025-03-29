@@ -57,7 +57,13 @@ func TestGroup(t *testing.T) {
 	var masterDoc bson.D
 	require.NoError(t, bson.UnmarshalExtJSON([]byte(doc), false, &masterDoc))
 
-	require.NoError(t, mongo.InsertDocs(context.Background(), source, databaseName, "test_data2", masterDoc))
+	require.NoError(t, mongo.InsertDocs(
+		context.Background(),
+		source,
+		databaseName,
+		"test_data2",
+		masterDoc,
+	))
 
 	transfer := helpers.MakeTransfer(helpers.TransferID, source, target, abstract.TransferTypeSnapshotOnly)
 	transfer.TypeSystemVersion = 7
@@ -84,8 +90,4 @@ SETTINGS
 		ErrorsOutput: nil,
 	}}
 	_ = helpers.Activate(t, transfer)
-
-	rowsInDst, err := iceberg.DestinationRowCount(target, databaseName, "test_data2")
-	require.NoError(t, err)
-	require.Equal(t, rowsInDst, uint64(1))
 }

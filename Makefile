@@ -31,7 +31,6 @@ run-tests:
 	  --junitfile="reports/all_$$sanitized_dir.xml" \
 	  --junitfile-project-name="all" \
 	  --junitfile-testsuite-name="short" \
-	  --rerun-fails \
 	  --format github-actions \
 	  --packages="./..." \
 	  -- -timeout=15m; \
