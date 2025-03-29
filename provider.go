@@ -47,6 +47,9 @@ func (p *Provider) Sink(config middlewares.Config) (abstract.Sinker, error) {
 	if config.ReplicationStage {
 		return nil, xerrors.New("Replication stage not supported")
 	}
+	if !p.transfer.SnapshotOnly() {
+		return nil, xerrors.New("Only snapshot transfers supported")
+	}
 	return NewSinkSnapshot(p.transfer.Dst.(*Destination), p.cp, p.transfer)
 }
 
