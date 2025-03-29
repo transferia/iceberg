@@ -463,7 +463,8 @@ func convertToIcebergSchema(schema *abstract.TableSchema) (*iceberg.Schema, erro
 			Required: col.Required,
 		}
 
-		if col.PrimaryKey {
+		// iceberg allows only required primary key
+		if col.PrimaryKey && col.Required {
 			identifierFieldIDs = append(identifierFieldIDs, nextID)
 		}
 
