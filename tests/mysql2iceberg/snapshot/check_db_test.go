@@ -26,7 +26,7 @@ func TestSnapshot(t *testing.T) {
 	transfer := helpers.MakeTransfer(helpers.TransferID, source, target, TransferType)
 	_ = helpers.Activate(t, transfer)
 
-	rowsInSrc, err := iceberg.DestinationRowCount(target, source.Database, "mysql_snapshot")
+	rowsInDst, err := iceberg.DestinationRowCount(target, source.Database, "mysql_snapshot")
 	require.NoError(t, err)
-	require.Equal(t, rowsInSrc, uint64(3))
+	require.Equal(t, rowsInDst, uint64(3))
 }
