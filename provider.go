@@ -47,10 +47,20 @@ func (p *Provider) Sink(config middlewares.Config) (abstract.Sinker, error) {
 	if config.ReplicationStage {
 		return nil, xerrors.New("Replication stage not supported")
 	}
-	if !p.transfer.SnapshotOnly() {
-		return nil, xerrors.New("Only snapshot transfers supported")
+
+	// Get destination config
+	dst, ok := p.transfer.Dst.(*Destination)
+	if !ok {
+		return nil, xerrors.Errorf("unexpected dst type: %T", p.transfer.Dst)
 	}
-	return NewSinkSnapshot(p.transfer.Dst.(*Destination), p.cp, p.transfer)
+	if appendable, ok := p.transfer.Src.(model.AppendOnlySource); ok && appendable.IsAppendOnly() {
+		return NewSinkStreaming(dst, p.cp, p.transfer, dst.CommitInterval)
+	}
+
+	if !p.transfer.SnapshotOnly() {
+		return nil, xerrors.Errorf("only snapshot and streaming supported")
+	}
+	return NewSinkSnapshot(dst, p.cp, p.transfer)
 }
 
 func (p Provider) Type() abstract.ProviderType {

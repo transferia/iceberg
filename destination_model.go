@@ -1,6 +1,8 @@
 package iceberg
 
 import (
+	"time"
+
 	"github.com/apache/iceberg-go"
 	"github.com/transferia/transferia/pkg/abstract"
 	"github.com/transferia/transferia/pkg/abstract/model"
@@ -12,12 +14,13 @@ var (
 )
 
 type Destination struct {
-	Properties    iceberg.Properties
-	SnapshotProps iceberg.Properties
-	CatalogType   string
-	CatalogURI    string
-	Schema        string
-	Prefix        string
+	Properties     iceberg.Properties
+	SnapshotProps  iceberg.Properties
+	CatalogType    string
+	CatalogURI     string
+	Schema         string
+	Prefix         string
+	CommitInterval time.Duration // Interval for committing files in streaming mode
 }
 
 // CleanupMode implements model.Destination.

@@ -1,10 +1,12 @@
 package iceberg
 
 import (
+	"os"
+	"time"
+
 	"github.com/transferia/iceberg/logger"
 	"github.com/transferia/transferia/library/go/core/metrics/solomon"
 	"github.com/transferia/transferia/pkg/abstract"
-	"os"
 
 	go_iceberg "github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/io"
@@ -38,11 +40,12 @@ func DestinationRecipe() (*Destination, error) {
 				io.S3SecretAccessKey: "password",
 				"type":               "rest",
 			},
-			SnapshotProps: nil,
-			CatalogType:   "rest",
-			CatalogURI:    os.Getenv("CATALOG_ENDPOINT"),
-			Schema:        "default",
-			Prefix:        "s3://warehouse",
+			SnapshotProps:  nil,
+			CatalogType:    "rest",
+			CatalogURI:     os.Getenv("CATALOG_ENDPOINT"),
+			Schema:         "default",
+			Prefix:         "s3://warehouse",
+			CommitInterval: 1 * time.Minute,
 		}, nil
 	}
 	return nil, xerrors.New("recipe not supported")
