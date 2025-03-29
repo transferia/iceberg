@@ -29,4 +29,23 @@ func init() {
 			typesystem.RestPlaceholder,
 		},
 	})
+	typesystem.TargetRule(ProviderType, map[schema.Type]string{
+		schema.TypeInt64:     new(iceberg.Int64Type).Type(),
+		schema.TypeInt32:     new(iceberg.Int32Type).Type(),
+		schema.TypeInt16:     new(iceberg.Int32Type).Type(),
+		schema.TypeInt8:      new(iceberg.Int32Type).Type(),
+		schema.TypeUint64:    new(iceberg.Int64Type).Type(),
+		schema.TypeUint32:    new(iceberg.Int64Type).Type(),
+		schema.TypeUint16:    new(iceberg.Int32Type).Type(),
+		schema.TypeUint8:     new(iceberg.Int32Type).Type(),
+		schema.TypeFloat32:   new(iceberg.Float32Type).Type(),
+		schema.TypeFloat64:   new(iceberg.Float64Type).Type(),
+		schema.TypeBytes:     new(iceberg.BinaryType).Type(),
+		schema.TypeString:    new(iceberg.StringType).Type(),
+		schema.TypeBoolean:   new(iceberg.BooleanType).Type(),
+		schema.TypeAny:       new(iceberg.StructType).Type(),
+		schema.TypeDate:      new(iceberg.DateType).Type(),
+		schema.TypeDatetime:  new(iceberg.TimestampTzType).Type(),
+		schema.TypeTimestamp: new(iceberg.TimestampTzType).Type(),
+	})
 }

@@ -39,6 +39,10 @@ jobs:
           go install gotest.tools/gotestsum@latest
       - shell: bash
         run: |
+          curl https://clickhouse.com/ | sh
+          sudo ./clickhouse install
+      - shell: bash
+        run: |
           pg_dump --version
       - shell: bash
         name: prepare local Spark

@@ -3,25 +3,31 @@ package iceberg
 import (
 	"github.com/apache/iceberg-go"
 	"github.com/transferia/transferia/pkg/abstract"
+	"github.com/transferia/transferia/pkg/abstract/model"
 )
 
-type IcebergSource struct {
+// To verify providers contract implementation
+var (
+	_ model.Source = (*Source)(nil)
+)
+
+type Source struct {
 	Properties  iceberg.Properties
 	CatalogType string
 	CatalogURI  string
 	Schema      string
 }
 
-func (i IcebergSource) GetProviderType() abstract.ProviderType {
+func (i *Source) GetProviderType() abstract.ProviderType {
 	return ProviderType
 }
 
-func (i IcebergSource) Validate() error {
+func (i *Source) Validate() error {
 	return nil
 }
 
-func (i IcebergSource) WithDefaults() {
+func (i *Source) WithDefaults() {
 }
 
-func (i IcebergSource) IsSource() {
+func (i *Source) IsSource() {
 }
