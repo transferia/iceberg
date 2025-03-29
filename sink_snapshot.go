@@ -23,7 +23,6 @@ import (
 	"github.com/apache/iceberg-go/io"
 	"github.com/apache/iceberg-go/table"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/transferia/transferia/library/go/core/xerrors"
 	"github.com/transferia/transferia/pkg/abstract"
 	"github.com/transferia/transferia/pkg/abstract/coordinator"
@@ -43,7 +42,7 @@ type SinkSnapshot struct {
 	cancelFunc context.CancelFunc
 	mu         sync.Mutex
 	insertNum  int
-	workerNum  int // TODO: pass worker index
+	workerNum  int
 	files      []string
 	cp         coordinator.Coordinator
 	transfer   *model.Transfer
@@ -67,6 +66,9 @@ func (s *SinkSnapshot) Push(items []abstract.ChangeItem) error {
 	tableGroups := make(map[string][]abstract.ChangeItem)
 	for _, item := range items {
 		if !item.IsRowEvent() {
+			if err := s.processControlEvent(item); err != nil {
+				return xerrors.Errorf("processing control event: %w", err)
+			}
 			continue
 		}
 
@@ -84,6 +86,78 @@ func (s *SinkSnapshot) Push(items []abstract.ChangeItem) error {
 	return nil
 }
 
+func (s *SinkSnapshot) processControlEvent(item abstract.ChangeItem) error {
+	// Create a context with timeout
+	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Minute)
+	defer cancel()
+
+	switch item.Kind {
+	case abstract.DoneTableLoad:
+		if err := s.cp.SetTransferState(s.transfer.ID, map[string]*coordinator.TransferStateData{
+			fmt.Sprintf("files_for_%v", s.workerNum): {Generic: s.files},
+		}); err != nil {
+			return xerrors.Errorf("set transfer state: %w", err)
+		}
+		return nil
+	case abstract.DoneShardedTableLoad:
+		state, err := s.cp.GetTransferState(s.transfer.ID)
+		if err != nil {
+			return xerrors.Errorf("get transfer state: %w", err)
+		}
+		var files []string
+		for k, v := range state {
+			if !strings.Contains(k, "files_for_") {
+				continue
+			}
+			files = append(files, v.Generic.([]string)...)
+		}
+		tbl, err := s.ensureTable(ctx, item)
+		if err != nil {
+			return xerrors.Errorf("ensure table: %w", err)
+		}
+		tx := tbl.NewTransaction()
+		if err := tx.AddFiles(files, s.cfg.SnapshotProps, false); err != nil {
+			return xerrors.Errorf("add files: %w", err)
+		}
+
+		if _, err := tx.Commit(ctx); err != nil {
+			return xerrors.Errorf("commit transaction: %w", err)
+		}
+		return nil
+	case abstract.DropTableKind, abstract.TruncateTableKind:
+		tblIdent := s.createTableIdent(item)
+
+		// load table to emulate check for existence
+		_, err := s.catalog.LoadTable(ctx, tblIdent, s.cfg.Properties)
+		if err != nil {
+			// table exist, skip
+			return nil
+		}
+
+		// drop table
+		if err := s.catalog.DropTable(ctx, tblIdent); err != nil {
+			return xerrors.Errorf("drop table: %w", err)
+		}
+
+		// for TRUNCATE we do drop and create
+		if item.Kind == abstract.TruncateTableKind {
+			schema, err := convertToIcebergSchema(item.TableSchema)
+			if err != nil {
+				return xerrors.Errorf("convert schema for truncate: %w", err)
+			}
+
+			// create table
+			_, err = s.catalog.CreateTable(ctx, tblIdent, schema)
+			if err != nil {
+				return xerrors.Errorf("recreate table after truncate: %w", err)
+			}
+		}
+
+		return nil
+	}
+	return nil
+}
+
 func (s *SinkSnapshot) processTable(items []abstract.ChangeItem) error {
 	// Skip if no items
 	if len(items) == 0 {
@@ -93,74 +167,6 @@ func (s *SinkSnapshot) processTable(items []abstract.ChangeItem) error {
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Minute)
 	defer cancel()
-
-	// Handle table operations (create, drop, truncate)
-	for _, item := range items {
-		switch item.Kind {
-		case abstract.DoneTableLoad:
-			if err := s.cp.SetTransferState(s.transfer.ID, map[string]*coordinator.TransferStateData{
-				fmt.Sprintf("files_for_%v", s.workerNum): {Generic: s.files},
-			}); err != nil {
-				return xerrors.Errorf("set transfer state: %w", err)
-			}
-			return nil
-		case abstract.DoneShardedTableLoad:
-			state, err := s.cp.GetTransferState(s.transfer.ID)
-			if err != nil {
-				return xerrors.Errorf("get transfer state: %w", err)
-			}
-			var files []string
-			for k, v := range state {
-				if !strings.Contains(k, "files_for_") {
-					continue
-				}
-				files = append(files, v.Generic.([]string)...)
-			}
-			tbl, err := s.ensureTable(ctx, item)
-			if err != nil {
-				return xerrors.Errorf("ensure table: %w", err)
-			}
-			tx := tbl.NewTransaction()
-			if err := tx.AddFiles(files, s.cfg.SnapshotProps, false); err != nil {
-				return xerrors.Errorf("add files: %w", err)
-			}
-
-			if _, err := tx.Commit(ctx); err != nil {
-				return xerrors.Errorf("commit transaction: %w", err)
-			}
-			return nil
-		case abstract.DropTableKind, abstract.TruncateTableKind:
-			tblIdent := s.createTableIdent(item)
-
-			// load table to emulate check for existence
-			_, err := s.catalog.LoadTable(ctx, tblIdent, iceberg.Properties{})
-			if err != nil {
-				// table exist, skip
-				continue
-			}
-
-			// drop table
-			if err := s.catalog.DropTable(ctx, tblIdent); err != nil {
-				return xerrors.Errorf("drop table: %w", err)
-			}
-
-			// for TRUNCATE we do drop and create
-			if item.Kind == abstract.TruncateTableKind {
-				schema, err := convertToIcebergSchema(item.TableSchema)
-				if err != nil {
-					return xerrors.Errorf("convert schema for truncate: %w", err)
-				}
-
-				// create table
-				_, err = s.catalog.CreateTable(ctx, tblIdent, schema)
-				if err != nil {
-					return xerrors.Errorf("recreate table after truncate: %w", err)
-				}
-			}
-
-			return nil
-		}
-	}
 
 	// Ensure the table exists
 	tbl, err := s.ensureTable(ctx, items[0])
@@ -179,7 +185,7 @@ func (s *SinkSnapshot) createTableIdent(item abstract.ChangeItem) table.Identifi
 func (s *SinkSnapshot) ensureTable(ctx context.Context, item abstract.ChangeItem) (*table.Table, error) {
 	tbl := s.createTableIdent(item)
 
-	existingTable, err := s.catalog.LoadTable(ctx, tbl, iceberg.Properties{})
+	existingTable, err := s.catalog.LoadTable(ctx, tbl, s.cfg.Properties)
 	if err == nil {
 		return existingTable, nil
 	}
@@ -200,9 +206,7 @@ func (s *SinkSnapshot) writeDataToTable(ctx context.Context, tbl *table.Table, i
 	if len(items) == 0 {
 		return nil
 	}
-	return backoff.Retry(func() error {
-		return s.writeBatch(ctx, tbl, items)
-	}, backoff.NewExponentialBackOff())
+	return s.writeBatch(ctx, tbl, items)
 }
 
 func (s *SinkSnapshot) writeBatch(ctx context.Context, tbl *table.Table, items []abstract.ChangeItem) error {
@@ -239,6 +243,9 @@ func (s *SinkSnapshot) writeBatch(ctx context.Context, tbl *table.Table, items [
 	if err := pw.Write(toArrowRows(items, arrSchema)); err != nil {
 		return xerrors.Errorf("write rows: %w", err)
 	}
+	if err := pw.Close(); err != nil {
+		return xerrors.Errorf("close writer: %w", err)
+	}
 	s.storeFile(fName)
 	return nil
 }
@@ -246,7 +253,7 @@ func (s *SinkSnapshot) writeBatch(ctx context.Context, tbl *table.Table, items [
 func (s *SinkSnapshot) fileName(tbl *table.Table) string {
 	insertNum := s.loadInsertNum()
 	return fmt.Sprintf(
-		"%s/%s/%s/%05d-%d-%s-%d-%05d.parquet",
+		"%s/%s/%s/data/%05d-%d-%s-%d-%05d.parquet",
 		s.cfg.Prefix,
 		tbl.Identifier()[0],
 		tbl.Identifier()[1],

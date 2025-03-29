@@ -22,7 +22,7 @@ type Destination struct {
 
 // CleanupMode implements model.Destination.
 func (i *Destination) CleanupMode() model.CleanupType {
-	return model.DisabledCleanup
+	return model.Drop
 }
 
 // GetProviderType implements model.Destination.
