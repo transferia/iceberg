@@ -7,14 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
-	"github.com/apache/arrow-go/v18/parquet/pqarrow"
-
 	"github.com/apache/iceberg-go/catalog"
 	"github.com/apache/iceberg-go/catalog/glue"
 	"github.com/apache/iceberg-go/catalog/rest"
-	"github.com/apache/iceberg-go/io"
 	"github.com/apache/iceberg-go/table"
 
 	"github.com/transferia/transferia/library/go/core/xerrors"
@@ -168,7 +163,7 @@ func (s *SinkSnapshot) processTable(items []abstract.ChangeItem) error {
 	}
 
 	// Convert data to Arrow format and write to parquet
-	return s.writeDataToTable(ctx, tbl, items)
+	return s.writeDataToTable(tbl, items)
 }
 
 func (s *SinkSnapshot) createTableIdent(item abstract.ChangeItem) table.Identifier {
@@ -195,67 +190,23 @@ func (s *SinkSnapshot) ensureTable(ctx context.Context, item abstract.ChangeItem
 	return itable, nil
 }
 
-func (s *SinkSnapshot) writeDataToTable(ctx context.Context, tbl *table.Table, items []abstract.ChangeItem) error {
+func (s *SinkSnapshot) writeDataToTable(tbl *table.Table, items []abstract.ChangeItem) error {
 	if len(items) == 0 {
 		return nil
 	}
-	return s.writeBatch(ctx, tbl, items)
+	return s.writeBatch(tbl, items)
 }
 
-func (s *SinkSnapshot) writeBatch(ctx context.Context, tbl *table.Table, items []abstract.ChangeItem) error {
+func (s *SinkSnapshot) writeBatch(tbl *table.Table, items []abstract.ChangeItem) error {
 	if len(items) == 0 {
 		return nil
 	}
-	fileIO, ok := tbl.FS().(io.WriteFileIO)
-	if !ok {
-		return xerrors.Errorf("%T does not implement io.WriteFileIO", tbl.FS())
-	}
-	fName := s.fileName(tbl)
-	fw, err := fileIO.Create(fName)
-	if err != nil {
-		return xerrors.Errorf("create file writer: %w", err)
-	}
-	arrSchema, err := table.SchemaToArrowSchema(
-		tbl.Schema(),
-		map[string]string{},
-		false,
-		false,
-	)
-	if err != nil {
-		return xerrors.Errorf("convert to ArrowSchema: %w", err)
-	}
-	pw, err := pqarrow.NewFileWriter(
-		arrSchema,
-		fw,
-		nil,
-		pqarrow.DefaultWriterProps(),
-	)
-	if err != nil {
-		return xerrors.Errorf("create array writer: %w", err)
-	}
-	if err := pw.Write(ToArrowRows(items, arrSchema)); err != nil {
-		return xerrors.Errorf("write rows: %w", err)
-	}
-	if err := pw.Close(); err != nil {
-		return xerrors.Errorf("close writer: %w", err)
+	fName := fileName(s.cfg.Prefix, s.loadInsertNum(), s.workerNum, tbl)
+	if err := writeFile(fName, tbl, items); err != nil {
+		return xerrors.Errorf("write file %s: %w", fName, err)
 	}
 	s.storeFile(fName)
 	return nil
-}
-
-func (s *SinkSnapshot) fileName(tbl *table.Table) string {
-	insertNum := s.loadInsertNum()
-	return fmt.Sprintf(
-		"%s/%s/%s/data/%05d-%d-%s-%d-%05d.parquet",
-		s.cfg.Prefix,
-		tbl.Identifier()[0],
-		tbl.Identifier()[1],
-		insertNum/10,
-		insertNum%10,
-		uuid.New().String(),
-		s.workerNum/10000,
-		s.workerNum%10000,
-	)
 }
 
 func (s *SinkSnapshot) loadInsertNum() int {
