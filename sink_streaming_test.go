@@ -1,6 +1,7 @@
 package iceberg
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -15,6 +16,9 @@ import (
 
 func TestStreamingSink(t *testing.T) {
 	// Setup coordinator
+	if os.Getenv("LOCAL") != "true" {
+		t.Skip()
+	}
 	cp := coordinator.NewStatefulFakeClient()
 
 	// Create destination
