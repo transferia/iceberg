@@ -32,7 +32,7 @@ run-tests:
 	  --junitfile-testsuite-name="short" \
 	  --rerun-fails \
 	  --format github-actions \
-	  --packages="." \
+	  --packages="./..." \
 	  -- -timeout=15m; \
 
 .PHONY: recipe
