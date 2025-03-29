@@ -1,6 +1,9 @@
 package iceberg
 
 import (
+	"github.com/transferia/iceberg/logger"
+	"github.com/transferia/transferia/library/go/core/metrics/solomon"
+	"github.com/transferia/transferia/pkg/abstract"
 	"os"
 
 	go_iceberg "github.com/apache/iceberg-go"
@@ -43,4 +46,25 @@ func DestinationRecipe() (*Destination, error) {
 		}, nil
 	}
 	return nil, xerrors.New("recipe not supported")
+}
+
+func DestinationRowCount(target *Destination, schema, table string) (uint64, error) {
+	src := &Source{
+		Properties:  target.Properties,
+		CatalogType: target.CatalogType,
+		CatalogURI:  target.CatalogURI,
+		Schema:      "public",
+	}
+	storage, err := NewStorage(src, logger.Log, solomon.NewRegistry(solomon.NewRegistryOpts()))
+	if err != nil {
+		return 0, xerrors.Errorf("could not create storage: %w", err)
+	}
+	rowsInSrc, err := storage.ExactTableRowsCount(abstract.TableID{
+		Namespace: schema,
+		Name:      table,
+	})
+	if err != nil {
+		return 0, xerrors.Errorf("could not get exact rows count: %w", err)
+	}
+	return rowsInSrc, nil
 }
