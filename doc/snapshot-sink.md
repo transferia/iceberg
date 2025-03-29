@@ -22,6 +22,61 @@ The workflow follows these steps:
 4. **File Registration**: Upon completion, workers register their files with the coordinator.
 5. **Final Commit**: When all workers finish, files are collected and committed to the Iceberg table.
 
+### Sharded Sequence Diagram
+
+**Description of the Sharded Upload Process:**
+
+The sharded data upload process to an Iceberg table works as follows:
+1. The Main Worker divides the data into shards and notifies the Coordinator about this division.
+2. Multiple worker processes (Worker2, Worker3, etc.) request data portions from the Coordinator in parallel for processing.
+3. Each worker independently processes its received data, converts it to Arrow format, and writes it to Parquet files in S3 storage.
+4. Workers track metadata of created files in memory and register them with the Coordinator upon completion.
+5. After all workers have completed their tasks, the Main Worker retrieves the list of all files from the Coordinator, creates a transaction in the Iceberg catalog, and performs the final commit.
+
+This approach provides efficient parallel data processing with atomic result committal, ensuring data integrity.
+
+```mermaid
+
+sequenceDiagram
+    participant Coordinator
+    participant Worker Main
+    participant Worker2
+    participant Worker3
+    participant S3
+    participant IcebergCatalog
+
+    Worker Main->>Coordinator: Shard snapshot parts
+
+%% File creation phase - parallel operations
+    par Worker 2 parralel processing
+        Worker2->>Coordinator: Fetch parts to load
+        Worker2->>Worker2: Convert data to Arrow format
+        Worker2->>S3: Write Parquet file 2-1
+        Worker2->>Worker2: Track file metadata in memory
+    and Worker 3 parralel processing
+        Worker3->>Coordinator: Fetch parts to load
+        Worker3->>Worker3: Convert data to Arrow format
+        Worker3->>S3: Write Parquet file 3-1
+        Worker3->>Worker3: Track file metadata in memory
+        Worker3->>S3: Write Parquet file 3-2
+        Worker3->>Worker3: Track file metadata in memory
+    end
+
+%% Completion phase
+    Worker2->>Coordinator: Register files (key=files_for_2)
+    Worker2-->>Coordinator: Signal completion
+    Worker3->>Coordinator: Register files (key=files_for_3)
+    Worker3-->>Coordinator: Signal completion
+
+%% Final commit phase - lead worker (Worker1) handles this
+    Coordinator->>Worker Main: Wait all workers completed
+    Worker Main->>Coordinator: Fetch all file lists
+    Worker Main->>Worker Main: Combine file lists
+    Worker Main->>IcebergCatalog: Create transaction
+    Worker Main->>IcebergCatalog: Add all files to transaction
+    Worker Main->>IcebergCatalog: Commit transaction
+```
+
 ## Implementation Details
 
 ### Worker Initialization
