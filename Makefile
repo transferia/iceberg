@@ -24,6 +24,7 @@ test:
 # Define the `run-tests` target
 .PHONY: run-tests
 run-tests:
+	export RECIPE_CLICKHOUSE_BIN=clickhouse; \
 	export USE_TESTCONTAINERS=1; \
 	sanitized_dir=$$(echo "$$dir" | sed 's|/|_|g'); \
 	gotestsum \

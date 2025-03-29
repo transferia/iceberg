@@ -31,7 +31,7 @@ func TestGroup(t *testing.T) {
 	}()
 
 	source.Collections = []mongocommon.MongoCollection{
-		{DatabaseName: databaseName, CollectionName: "test_data"},
+		{DatabaseName: databaseName, CollectionName: "test_data2"},
 	}
 
 	doc := `{
@@ -57,7 +57,7 @@ func TestGroup(t *testing.T) {
 	var masterDoc bson.D
 	require.NoError(t, bson.UnmarshalExtJSON([]byte(doc), false, &masterDoc))
 
-	require.NoError(t, mongo.InsertDocs(context.Background(), source, databaseName, "test_data", masterDoc))
+	require.NoError(t, mongo.InsertDocs(context.Background(), source, databaseName, "test_data2", masterDoc))
 
 	transfer := helpers.MakeTransfer(helpers.TransferID, source, target, abstract.TransferTypeSnapshotOnly)
 	transfer.TypeSystemVersion = 7
@@ -66,7 +66,7 @@ func TestGroup(t *testing.T) {
 		Transformers: []transformer.Transformer{{
 			clickhouse.Type: clickhouse.Config{
 				Tables: filter.Tables{
-					IncludeTables: []string{fmt.Sprintf("%s.%s", databaseName, "test_data")},
+					IncludeTables: []string{fmt.Sprintf("%s.%s", databaseName, "test_data2")},
 				},
 				Query: `
 SELECT _id,
@@ -85,7 +85,7 @@ SETTINGS
 	}}
 	_ = helpers.Activate(t, transfer)
 
-	rowsInDst, err := iceberg.DestinationRowCount(target, databaseName, "test_data")
+	rowsInDst, err := iceberg.DestinationRowCount(target, databaseName, "test_data2")
 	require.NoError(t, err)
 	require.Equal(t, rowsInDst, uint64(1))
 }
