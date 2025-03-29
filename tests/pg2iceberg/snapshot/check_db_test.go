@@ -2,6 +2,8 @@ package snapshot
 
 import (
 	"context"
+	"github.com/transferia/iceberg/logger"
+	"github.com/transferia/transferia/library/go/core/metrics/solomon"
 	"testing"
 
 	"github.com/transferia/iceberg"
@@ -33,4 +35,19 @@ func TestSnapshot(t *testing.T) {
 	transfer := helpers.MakeTransfer(helpers.TransferID, source, target, TransferType)
 	require.NoError(t, err)
 	require.NoError(t, tasks.ActivateDelivery(context.Background(), nil, coordinator.NewStatefulFakeClient(), *transfer, helpers.EmptyRegistry()))
+
+	src := &iceberg.Source{
+		Properties:  target.Properties,
+		CatalogType: target.CatalogType,
+		CatalogURI:  target.CatalogURI,
+		Schema:      "public",
+	}
+	storage, err := iceberg.NewStorage(src, logger.Log, solomon.NewRegistry(solomon.NewRegistryOpts()))
+	require.NoError(t, err)
+	rowsInSrc, err := storage.ExactTableRowsCount(abstract.TableID{
+		Namespace: "public",
+		Name:      "__test",
+	})
+	require.NoError(t, err)
+	require.Equal(t, rowsInSrc, uint64(16))
 }
