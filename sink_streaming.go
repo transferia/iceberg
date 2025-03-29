@@ -405,7 +405,9 @@ func NewSinkStreaming(cfg *Destination, cp coordinator.Coordinator, transfer *mo
 	}
 
 	// Start commit scheduler
-	sink.startCommitScheduler()
+	if transfer.IsMain() || transfer.CurrentJobIndex() == 0 {
+		sink.startCommitScheduler()
+	}
 
 	return sink, nil
 }
