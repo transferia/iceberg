@@ -205,6 +205,9 @@ func ConvertToIcebergSchema(schema *abstract.TableSchema) (*iceberg.Schema, erro
 			Type:     fieldType,
 			Required: col.Required,
 		}
+		if field.Name == "_partition" {
+			field.Name = "_partition_tr"
+		}
 
 		// iceberg allows only required primary key
 		if col.PrimaryKey && col.Required {

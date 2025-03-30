@@ -275,7 +275,9 @@ func (s *SinkStreaming) commitTables() error {
 
 		// Extract schema and table name from tableID
 		tid, _ := abstract.ParseTableID(tableID)
-
+		if tid.Namespace == "" {
+			tid.Namespace = s.cfg.DefaultNamespace
+		}
 		// Load table
 		tblIdent := table.Identifier{tid.Namespace, tid.Name}
 		tbl, err := s.catalog.LoadTable(ctx, tblIdent, s.cfg.Properties)

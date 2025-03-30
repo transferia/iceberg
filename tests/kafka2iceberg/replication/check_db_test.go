@@ -93,7 +93,7 @@ func TestReplication(t *testing.T) {
 	}
 
 	// check results
-	time.Sleep(time.Second)
+	time.Sleep(5 * time.Second)
 	rowsInSrc, err := iceberg.DestinationRowCount(target, target.DefaultNamespace, source.Topic)
 	require.NoError(t, err)
 	require.True(t, rowsInSrc > 0)
