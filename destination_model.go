@@ -14,13 +14,14 @@ var (
 )
 
 type Destination struct {
-	Properties     iceberg.Properties
-	SnapshotProps  iceberg.Properties
-	CatalogType    string
-	CatalogURI     string
-	Schema         string
-	Prefix         string
-	CommitInterval time.Duration // Interval for committing files in streaming mode
+	Properties       iceberg.Properties
+	SnapshotProps    iceberg.Properties
+	CatalogType      string
+	CatalogURI       string
+	Schema           string
+	Prefix           string
+	CommitInterval   time.Duration // Interval for committing files in streaming mode
+	DefaultNamespace string
 }
 
 // CleanupMode implements model.Destination.

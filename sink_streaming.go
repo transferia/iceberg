@@ -106,7 +106,11 @@ func (s *SinkStreaming) processTable(items []abstract.ChangeItem) error {
 }
 
 func (s *SinkStreaming) createTableIdent(item abstract.ChangeItem) table.Identifier {
-	return table.Identifier{item.Schema, item.Table}
+	schema := item.Schema
+	if schema == "" {
+		schema = s.cfg.DefaultNamespace
+	}
+	return table.Identifier{schema, item.Table}
 }
 
 func (s *SinkStreaming) ensureTable(ctx context.Context, item abstract.ChangeItem) (*table.Table, error) {

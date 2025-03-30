@@ -54,7 +54,9 @@ func writeFile(fName string, tbl *table.Table, items []abstract.ChangeItem) erro
 	if err != nil {
 		return xerrors.Errorf("create array writer: %w", err)
 	}
-	if err := pw.Write(ToArrowRows(items, arrSchema)); err != nil {
+	record := ToArrowRows(items, arrSchema)
+	defer record.Release()
+	if err := pw.Write(record); err != nil {
 		return xerrors.Errorf("write rows: %w", err)
 	}
 	if err := pw.Close(); err != nil {

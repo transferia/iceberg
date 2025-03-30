@@ -44,10 +44,6 @@ type Provider struct {
 
 // Sink implements providers.Sinker.
 func (p *Provider) Sink(config middlewares.Config) (abstract.Sinker, error) {
-	if config.ReplicationStage {
-		return nil, xerrors.New("Replication stage not supported")
-	}
-
 	// Get destination config
 	dst, ok := p.transfer.Dst.(*Destination)
 	if !ok {
