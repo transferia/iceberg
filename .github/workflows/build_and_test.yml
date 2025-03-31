@@ -66,9 +66,6 @@ jobs:
         with:
           name: test-reports-${{ matrix.suite.name }}
           path: reports/*.xml
-      - name: Fail if tests failed
-        if: failure()
-        run: exit 1
 
   test-report:
     needs: [
