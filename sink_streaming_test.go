@@ -1,7 +1,6 @@
 package iceberg
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -15,10 +14,6 @@ import (
 )
 
 func TestStreamingSink(t *testing.T) {
-	// Setup coordinator
-	if os.Getenv("LOCAL") != "true" {
-		t.Skip()
-	}
 	cp := coordinator.NewStatefulFakeClient()
 
 	// Create destination
@@ -81,6 +76,13 @@ func TestStreamingSink(t *testing.T) {
 			},
 		},
 	}
+
+	// Push data
+	err = sink.Push(items)
+	require.NoError(t, err)
+
+	// Wait for commit to happen (slightly more than the interval)
+	time.Sleep(time.Second)
 
 	// Push data
 	err = sink.Push(items)

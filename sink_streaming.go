@@ -37,7 +37,6 @@ type SinkStreaming struct {
 	insertNum     int
 	workerNum     int
 	files         map[string][]string // Map of tableID -> file paths
-	tableCache    map[string]*table.Table
 	cp            coordinator.Coordinator
 	transfer      *model.Transfer
 	commitTicker  *time.Ticker
@@ -114,25 +113,11 @@ func (s *SinkStreaming) createTableIdent(item abstract.ChangeItem) table.Identif
 }
 
 func (s *SinkStreaming) ensureTable(ctx context.Context, item abstract.ChangeItem) (*table.Table, error) {
-	tableID := item.TableID().String()
-
-	// Check cache first
-	s.mu.Lock()
-	if tbl, ok := s.tableCache[tableID]; ok {
-		s.mu.Unlock()
-		return tbl, nil
-	}
-	s.mu.Unlock()
-
 	tblIdent := s.createTableIdent(item)
 
 	// Try to load existing table
 	existingTable, err := s.catalog.LoadTable(ctx, tblIdent, s.cfg.Properties)
 	if err == nil {
-		// Cache the table
-		s.mu.Lock()
-		s.tableCache[tableID] = existingTable
-		s.mu.Unlock()
 		return existingTable, nil
 	}
 
@@ -146,11 +131,6 @@ func (s *SinkStreaming) ensureTable(ctx context.Context, item abstract.ChangeIte
 	if err != nil {
 		return nil, xerrors.Errorf("creating table: %w", err)
 	}
-
-	// Cache the table
-	s.mu.Lock()
-	s.tableCache[tableID] = itable
-	s.mu.Unlock()
 
 	return itable, nil
 }
@@ -404,7 +384,6 @@ func NewSinkStreaming(cfg *Destination, cp coordinator.Coordinator, transfer *mo
 		insertNum:     0,
 		workerNum:     transfer.CurrentJobIndex(),
 		files:         make(map[string][]string),
-		tableCache:    make(map[string]*table.Table),
 		cp:            cp,
 		transfer:      transfer,
 		commitTimeout: commitTimeout,
