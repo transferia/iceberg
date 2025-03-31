@@ -226,7 +226,12 @@ func NewSinkSnapshot(cfg *Destination, cp coordinator.Coordinator, transfer *mod
 	var cat catalog.Catalog
 	if cfg.CatalogType == "rest" {
 		var err error
-		cat, err = rest.NewCatalog(context.Background(), cfg.CatalogType, cfg.CatalogURI)
+		cat, err = rest.NewCatalog(
+			context.Background(),
+			cfg.CatalogType,
+			cfg.CatalogURI,
+			rest.WithAdditionalProps(cfg.Properties),
+		)
 		if err != nil {
 			return nil, xerrors.Errorf("unable to init catalog: %w", err)
 		}

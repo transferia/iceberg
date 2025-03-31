@@ -130,11 +130,12 @@ func (s *SinkStreaming) ensureTable(ctx context.Context, item abstract.ChangeIte
 		return nil, xerrors.Errorf("converting to IcebergSchema: %w", err)
 	}
 
-	if _, err := s.catalog.CreateTable(ctx, tblIdent, schema); err != nil {
+	itable, err := s.catalog.CreateTable(ctx, tblIdent, schema)
+	if err != nil {
 		return nil, xerrors.Errorf("creating table: %w", err)
 	}
 
-	return s.catalog.LoadTable(ctx, tblIdent, s.cfg.Properties)
+	return itable, nil
 }
 
 func (s *SinkStreaming) writeBatch(tbl *table.Table, items []abstract.ChangeItem) error {
@@ -355,7 +356,12 @@ func NewSinkStreaming(cfg *Destination, cp coordinator.Coordinator, transfer *mo
 	var cat catalog.Catalog
 	if cfg.CatalogType == "rest" {
 		var err error
-		cat, err = rest.NewCatalog(context.Background(), cfg.CatalogType, cfg.CatalogURI)
+		cat, err = rest.NewCatalog(
+			context.Background(),
+			cfg.CatalogType,
+			cfg.CatalogURI,
+			rest.WithAdditionalProps(cfg.Properties),
+		)
 		if err != nil {
 			return nil, xerrors.Errorf("unable to init catalog: %w", err)
 		}
