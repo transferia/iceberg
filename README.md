@@ -63,7 +63,16 @@ The project uses standard Go tooling and Make for common tasks:
 
 ## Key Features
 
-### Snapshot Sink
+### Iceberg Table Reading
+
+The Iceberg Provider implements a robust Table Reading mechanism that:
+
+1. Supports multiple reading patterns including snapshot, incremental, and time travel reads
+2. Provides efficient data access through optimized manifest processing
+3. Ensures data consistency through snapshot-based reading
+4. Implements advanced optimization techniques like partition pruning and column projection
+
+For more details, see the [Iceberg Table Reading Design Document](doc/storage.md).
 
 ### Snapshot Sink
 
@@ -86,8 +95,6 @@ The Iceberg Provider also implements a Streaming Sink mechanism that:
 4. Supports automatic schema evolution and data type mapping
 
 **Note**: It's for append-only sources, not for CDC
-
-For more details, see the [Streaming Sink Design Document](doc/streaming-sink.md).
 
 ## Contributing
 
