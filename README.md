@@ -65,6 +65,8 @@ The project uses standard Go tooling and Make for common tasks:
 
 ### Snapshot Sink
 
+### Snapshot Sink
+
 The Iceberg Provider implements a powerful Snapshot Sink mechanism that:
 
 1. Efficiently transforms incoming data into Parquet files
@@ -72,7 +74,20 @@ The Iceberg Provider implements a powerful Snapshot Sink mechanism that:
 3. Coordinates file registration using a central coordinator
 4. Atomically commits all files to the target table in a single transaction
 
-For more details, see the [Snapshot Sink Design Document](doc/design/snapshot-sink.md).
+For more details, see the [Snapshot Sink Design Document](doc/snapshot-sink.md).
+
+### Streaming Sink
+
+The Iceberg Provider also implements a Streaming Sink mechanism that:
+
+1. Processes data in real-time as it arrives
+2. Maintains continuous data ingestion with minimal latency
+3. Provides exactly-once semantics for data delivery
+4. Supports automatic schema evolution and data type mapping
+
+**Note**: It's for append-only sources, not for CDC
+
+For more details, see the [Streaming Sink Design Document](doc/streaming-sink.md).
 
 ## Contributing
 
