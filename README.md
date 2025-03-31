@@ -67,10 +67,9 @@ The project uses standard Go tooling and Make for common tasks:
 
 The Iceberg Provider implements a robust Table Reading mechanism that:
 
-1. Supports multiple reading patterns including snapshot, incremental, and time travel reads
-2. Provides efficient data access through optimized manifest processing
-3. Ensures data consistency through snapshot-based reading
-4. Implements advanced optimization techniques like partition pruning and column projection
+1. Provides efficient data access through optimized manifest processing
+2. Ensures data consistency through snapshot-based reading
+3. Implements advanced optimization techniques like partition pruning and column projection
 
 For more details, see the [Iceberg Table Reading Design Document](doc/storage.md).
 
