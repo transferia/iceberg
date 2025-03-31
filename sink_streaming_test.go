@@ -1,6 +1,7 @@
 package iceberg
 
 import (
+	"github.com/transferia/iceberg/logger"
 	"testing"
 	"time"
 
@@ -27,7 +28,7 @@ func TestStreamingSink(t *testing.T) {
 	}
 
 	// Create streaming sink
-	sink, err := NewSinkStreaming(dst, cp, transfer, dst.CommitInterval)
+	sink, err := NewSinkStreaming(dst, cp, transfer, logger.Log)
 	require.NoError(t, err)
 	defer sink.Close()
 

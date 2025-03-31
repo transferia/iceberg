@@ -50,7 +50,7 @@ func (p *Provider) Sink(config middlewares.Config) (abstract.Sinker, error) {
 		return nil, xerrors.Errorf("unexpected dst type: %T", p.transfer.Dst)
 	}
 	if appendable, ok := p.transfer.Src.(model.AppendOnlySource); ok && appendable.IsAppendOnly() {
-		return NewSinkStreaming(dst, p.cp, p.transfer, dst.CommitInterval)
+		return NewSinkStreaming(dst, p.cp, p.transfer, p.logger)
 	}
 
 	if !p.transfer.SnapshotOnly() {

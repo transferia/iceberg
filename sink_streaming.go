@@ -3,6 +3,7 @@ package iceberg
 import (
 	"context"
 	"fmt"
+	"go.ytsaurus.tech/library/go/core/log"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +43,7 @@ type SinkStreaming struct {
 	commitTicker  *time.Ticker
 	commitDone    chan bool
 	commitTimeout time.Duration
+	lgr           log.Logger
 }
 
 // Close implements abstract.Sinker.
@@ -101,7 +103,7 @@ func (s *SinkStreaming) processTable(items []abstract.ChangeItem) error {
 	}
 
 	// Convert data to Arrow format and write to parquet
-	return s.writeDataToTable(tbl, items)
+	return s.writeBatch(tbl, items)
 }
 
 func (s *SinkStreaming) createTableIdent(item abstract.ChangeItem) table.Identifier {
@@ -118,6 +120,7 @@ func (s *SinkStreaming) ensureTable(ctx context.Context, item abstract.ChangeIte
 	// Try to load existing table
 	existingTable, err := s.catalog.LoadTable(ctx, tblIdent, s.cfg.Properties)
 	if err == nil {
+		s.lgr.Infof("table %s already exists: props: %v", tblIdent, s.cfg.Properties)
 		return existingTable, nil
 	}
 
@@ -127,19 +130,11 @@ func (s *SinkStreaming) ensureTable(ctx context.Context, item abstract.ChangeIte
 		return nil, xerrors.Errorf("converting to IcebergSchema: %w", err)
 	}
 
-	itable, err := s.catalog.CreateTable(ctx, tblIdent, schema)
-	if err != nil {
+	if _, err := s.catalog.CreateTable(ctx, tblIdent, schema); err != nil {
 		return nil, xerrors.Errorf("creating table: %w", err)
 	}
 
-	return itable, nil
-}
-
-func (s *SinkStreaming) writeDataToTable(tbl *table.Table, items []abstract.ChangeItem) error {
-	if len(items) == 0 {
-		return nil
-	}
-	return s.writeBatch(tbl, items)
+	return s.catalog.LoadTable(ctx, tblIdent, s.cfg.Properties)
 }
 
 func (s *SinkStreaming) writeBatch(tbl *table.Table, items []abstract.ChangeItem) error {
@@ -356,7 +351,7 @@ func (s *SinkStreaming) clearState(tableID string) error {
 }
 
 // NewSinkStreaming creates a new streaming sink
-func NewSinkStreaming(cfg *Destination, cp coordinator.Coordinator, transfer *model.Transfer, commitTimeout time.Duration) (*SinkStreaming, error) {
+func NewSinkStreaming(cfg *Destination, cp coordinator.Coordinator, transfer *model.Transfer, logger log.Logger) (*SinkStreaming, error) {
 	var cat catalog.Catalog
 	if cfg.CatalogType == "rest" {
 		var err error
@@ -371,6 +366,7 @@ func NewSinkStreaming(cfg *Destination, cp coordinator.Coordinator, transfer *mo
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// If commit timeout is not specified, use default of 1 minute
+	commitTimeout := cfg.CommitInterval
 	if commitTimeout <= 0 {
 		commitTimeout = 1 * time.Minute
 	}
@@ -387,6 +383,7 @@ func NewSinkStreaming(cfg *Destination, cp coordinator.Coordinator, transfer *mo
 		cp:            cp,
 		transfer:      transfer,
 		commitTimeout: commitTimeout,
+		lgr:           logger,
 	}
 
 	// Start commit scheduler
