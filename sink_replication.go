@@ -10,6 +10,7 @@ import (
 
 	"github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/catalog"
+	_ "github.com/apache/iceberg-go/io/gocloud" // register S3/GCS/Azure IO schemes
 	"github.com/apache/iceberg-go/table"
 
 	"github.com/transferia/transferia/library/go/core/xerrors"
@@ -198,6 +199,10 @@ func (s *SinkReplication) flushLocked() error {
 		return nil
 	}
 
+	for tableID, batch := range tableBatches {
+		s.lgr.Info("Flushing table", log.String("table", tableID), log.Int("items", len(batch.items)), log.UInt64("maxLSN", batch.maxLSN))
+	}
+
 	// Process each table and collect commit data
 	commitData := make(map[string]*tableCommitDataInternal)
 
@@ -249,7 +254,14 @@ func (s *SinkReplication) flushLocked() error {
 		return nil
 	}
 
-	return s.commitAllInternal(ctx, commitData)
+	if err := s.commitAllInternal(ctx, commitData); err != nil {
+		s.lgr.Error("Commit failed", log.Error(err))
+		return err
+	}
+	for tableID, d := range commitData {
+		s.lgr.Info("Committed table", log.String("table", tableID), log.Int("dataFiles", len(d.dataFiles)), log.Int("deletes", len(d.deletes)))
+	}
+	return nil
 }
 
 // ensureTable loads or creates the Iceberg table.
@@ -267,7 +279,12 @@ func (s *SinkReplication) ensureTable(ctx context.Context, item abstract.ChangeI
 		return tbl, nil
 	}
 
-	// Table doesn't exist — create with format-version=2 for equality delete support
+	// Table doesn't exist — ensure namespace exists, then create with format-version=2
+	ns := table.Identifier{ident[0]}
+	if exists, _ := s.catalog.CheckNamespaceExists(ctx, ns); !exists {
+		_ = s.catalog.CreateNamespace(ctx, ns, nil)
+	}
+
 	schema, err := ConvertToIcebergSchema(item.TableSchema)
 	if err != nil {
 		return nil, xerrors.Errorf("converting schema: %w", err)
