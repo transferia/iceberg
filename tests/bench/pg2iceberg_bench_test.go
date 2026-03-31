@@ -99,19 +99,23 @@ func runBenchmark(t *testing.T, cfg LoadGeneratorConfig) *BenchmarkResult {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// --- Setup PG connection pool ---
-	pool, err := pgxpool.Connect(ctx, pgConnectionString())
-	require.NoError(t, err)
-	defer pool.Close()
-
 	// --- Setup Iceberg destination ---
 	target, err := iceberg.DestinationRecipe()
 	require.NoError(t, err)
 	target.CommitInterval = 5 * time.Second
 
-	// --- Setup PG source for transfer ---
-	source := pgrecipe.RecipeSource()
-	source.Database = pgDatabase()
+	// --- Setup PG source for transfer (testcontainer) ---
+	source := pgrecipe.RecipeSource(pgrecipe.WithoutPgDump())
+
+	// Clean up any leftover Iceberg table from previous runs
+	iceberg.CleanupTable(target, benchSchema, benchTable)
+
+	// --- Connect load generator to the SAME PG as the transfer ---
+	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
+		source.Hosts[0], source.Port, source.User, string(source.Password), source.Database)
+	pool, err := pgxpool.Connect(ctx, connStr)
+	require.NoError(t, err)
+	defer pool.Close()
 
 	// --- Init load generator + create table ---
 	gen := NewLoadGenerator(cfg, pool)
@@ -156,24 +160,4 @@ func skipIfNoInfra(t *testing.T) {
 	if os.Getenv("CATALOG_ENDPOINT") == "" {
 		t.Skip("CATALOG_ENDPOINT not set; start infra with 'make recipe' first")
 	}
-}
-
-func pgConnectionString() string {
-	host := envOrDefault("SOURCE_PG_LOCAL_HOST", "localhost")
-	port := envOrDefault("SOURCE_PG_LOCAL_PORT", "5432")
-	user := envOrDefault("SOURCE_PG_LOCAL_USER", "postgres")
-	pass := envOrDefault("SOURCE_PG_LOCAL_PASSWORD", "postgres")
-	db := pgDatabase()
-	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", host, port, user, pass, db)
-}
-
-func pgDatabase() string {
-	return envOrDefault("SOURCE_PG_LOCAL_DATABASE", "bench")
-}
-
-func envOrDefault(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
 }

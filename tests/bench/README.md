@@ -103,25 +103,30 @@ Edit `DefaultConfig()` in `load_generator.go` to adjust:
 - `RampDuration` / `HoldDuration` — timing
 - `Workers` — concurrent PG writer goroutines
 
-## Example Output
+## Benchmark Results (Apple M1 Pro, Docker/Colima, local MinIO)
+
+### Smoke test (InsertOnly, 100→500 rows/sec, 20s)
 
 ```
-[10s]  PG:8500   Iceberg:0     Lag:8500   Rate:850/s
-[20s]  PG:19200  Iceberg:8500  Lag:10700  Rate:1070/s
-[30s]  PG:33000  Iceberg:19200 Lag:13800  Rate:1380/s
-...
-[5m0s] PG:1650000 Iceberg:1648500 Lag:1500  Rate:10000/s
+[10s] PG:2969  Iceberg:1667  Lag:1302  Rate:296/s
+[20s] PG:7896  Iceberg:6403  Lag:1493  Rate:492/s
+[30s] PG:7896  Iceberg:7896  Lag:0     Rate:0/s
 
 === Benchmark Results ===
-Profile:           InsertHeavy
-Duration:          5m0s
-PG rows written:   1650000 (I:1485000 U:82500 D:82500)
-Iceberg rows:      1648500
-Replication lag:   1500 rows
-Peak write rate:   10000 rows/sec
-Avg write rate:    5500 rows/sec
+Profile:           InsertOnly
+Duration:          20s
+PG rows written:   7,896 (I:7,896 U:0 D:0)
+Iceberg rows:      7,896
+Replication lag:   0 rows
+Peak write rate:   492 rows/sec
+Avg write rate:    394 rows/sec
 ========================
 ```
+
+Key observations:
+- **Zero data loss**: Iceberg rows match PG rows exactly (7,896 = 7,896)
+- **Lag catches up**: ~1,500 row lag during load, drops to 0 within 10s after load stops
+- **Commit interval**: 5s flush interval produces ~4 commits during 20s load window
 
 ## What to Look For
 

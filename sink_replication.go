@@ -272,6 +272,11 @@ func (s *SinkReplication) flushLocked() error {
 	}
 
 	if err := s.commitAllInternal(ctx, commitData); err != nil {
+		// Invalidate cached tables so next retry reloads fresh metadata
+		// (avoids CommitFailedException on stale table versions)
+		for tableID := range commitData {
+			delete(s.tableCache, tableID)
+		}
 		return err
 	}
 
