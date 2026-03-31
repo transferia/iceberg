@@ -6,6 +6,7 @@ import (
 
 	"github.com/apache/iceberg-go/catalog/glue"
 	"github.com/apache/iceberg-go/catalog/rest"
+	_ "github.com/apache/iceberg-go/io/gocloud"
 	"github.com/transferia/transferia/pkg/abstract/changeitem"
 
 	"github.com/apache/iceberg-go/catalog"
@@ -154,8 +155,26 @@ func (s *Storage) TableList(filter abstract.IncludeTableList) (abstract.TableMap
 	return res, nil
 }
 
-func (s *Storage) ExactTableRowsCount(table abstract.TableID) (uint64, error) {
-	return s.EstimateTableRowsCount(table)
+func (s *Storage) ExactTableRowsCount(tid abstract.TableID) (uint64, error) {
+	tbl := table.Identifier{tid.Namespace, tid.Name}
+	itable, err := s.cat.LoadTable(context.TODO(), tbl)
+	if err != nil {
+		return 0, xerrors.Errorf("unable to load table: %v: %w", tbl, err)
+	}
+	// Use scan to get accurate count (respects equality deletes / merge-on-read)
+	_, records, err := itable.Scan().ToArrowRecords(context.TODO())
+	if err != nil {
+		return 0, xerrors.Errorf("unable to scan table: %w", err)
+	}
+	totalCount := uint64(0)
+	for rec, err := range records {
+		if err != nil {
+			return 0, xerrors.Errorf("unable to read record: %w", err)
+		}
+		totalCount += uint64(rec.NumRows())
+		rec.Release()
+	}
+	return totalCount, nil
 }
 
 func (s *Storage) EstimateTableRowsCount(tid abstract.TableID) (uint64, error) {
@@ -164,6 +183,7 @@ func (s *Storage) EstimateTableRowsCount(tid abstract.TableID) (uint64, error) {
 	if err != nil {
 		return 0, xerrors.Errorf("unable to load table: %v: %w", tbl, err)
 	}
+	// Use file-level counts for estimation (fast but doesn't account for deletes)
 	files, err := itable.Scan().PlanFiles(context.TODO())
 	if err != nil {
 		return 0, xerrors.Errorf("unable to plan files to read: %w", err)
@@ -244,7 +264,7 @@ func NewStorage(src *Source, logger log.Logger, registry metrics.Registry) (*Sto
 	var cat catalog.Catalog
 	if src.CatalogType == "rest" {
 		var err error
-		cat, err = rest.NewCatalog(context.Background(), src.CatalogType, src.CatalogURI)
+		cat, err = rest.NewCatalog(context.Background(), src.CatalogType, src.CatalogURI, rest.WithAdditionalProps(src.Properties))
 		if err != nil {
 			return nil, xerrors.Errorf("unable to init catalog: %w", err)
 		}

@@ -1,6 +1,7 @@
 package iceberg
 
 import (
+	"context"
 	"os"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	go_iceberg "github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/io"
+	iceTable "github.com/apache/iceberg-go/table"
 
 	"github.com/transferia/transferia/library/go/core/xerrors"
 )
@@ -49,6 +51,16 @@ func DestinationRecipe() (*Destination, error) {
 		}, nil
 	}
 	return nil, xerrors.New("recipe not supported")
+}
+
+// CleanupTable drops an Iceberg table if it exists (for test cleanup).
+func CleanupTable(target *Destination, schema, tableName string) {
+	cat, err := target.NewCatalog()
+	if err != nil {
+		return
+	}
+	ident := iceTable.Identifier{schema, tableName}
+	_ = cat.DropTable(context.Background(), ident)
 }
 
 func DestinationRowCount(target *Destination, schema, table string) (uint64, error) {

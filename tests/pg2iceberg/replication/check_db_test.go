@@ -29,8 +29,6 @@ func dumpDir() string {
 // 3. Perform INSERT, UPDATE, DELETE via SQL
 // 4. Verify the Iceberg table reflects all changes
 func TestSnapshotAndReplication(t *testing.T) {
-
-
 	source := pgrecipe.RecipeSource(
 		pgrecipe.WithInitDir(dumpDir()),
 		pgrecipe.WithoutPgDump(),
@@ -38,6 +36,9 @@ func TestSnapshotAndReplication(t *testing.T) {
 	target, err := iceberg.DestinationRecipe()
 	require.NoError(t, err)
 	target.CommitInterval = 2 * time.Second
+
+	// Clean up any leftover Iceberg table from previous runs
+	iceberg.CleanupTable(target, "public", "cdc_test")
 
 	transfer := helpers.MakeTransfer(helpers.TransferID, source, target, abstract.TransferTypeSnapshotAndIncrement)
 	transfer.TypeSystemVersion = model.LatestVersion
