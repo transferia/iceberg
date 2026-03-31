@@ -46,7 +46,7 @@ func (s *Storage) Ping() error {
 
 func (s *Storage) LoadTable(ctx context.Context, tid abstract.TableDescription, pusher abstract.Pusher) error {
 	tbl := table.Identifier{tid.Schema, tid.Name}
-	itable, err := s.cat.LoadTable(ctx, tbl, s.props)
+	itable, err := s.cat.LoadTable(ctx, tbl)
 	if err != nil {
 		return xerrors.Errorf("unable to load table: %v: %w", tbl, err)
 	}
@@ -114,7 +114,7 @@ func (s *Storage) LoadTable(ctx context.Context, tid abstract.TableDescription, 
 
 func (s *Storage) TableSchema(ctx context.Context, tid abstract.TableID) (*abstract.TableSchema, error) {
 	tbl := table.Identifier{tid.Namespace, tid.Name}
-	itable, err := s.cat.LoadTable(ctx, tbl, s.props)
+	itable, err := s.cat.LoadTable(ctx, tbl)
 	if err != nil {
 		return nil, xerrors.Errorf("unable to load table: %v: %w", tbl, err)
 	}
@@ -132,7 +132,7 @@ func (s *Storage) TableList(filter abstract.IncludeTableList) (abstract.TableMap
 		if filter != nil && !filter.Include(s.AsTableID(tbl)) {
 			continue
 		}
-		itable, err := s.cat.LoadTable(context.TODO(), tbl, s.props)
+		itable, err := s.cat.LoadTable(context.TODO(), tbl)
 		if err != nil {
 			return nil, xerrors.Errorf("unable to load table: %v: %w", tbl, err)
 		}
@@ -160,7 +160,7 @@ func (s *Storage) ExactTableRowsCount(table abstract.TableID) (uint64, error) {
 
 func (s *Storage) EstimateTableRowsCount(tid abstract.TableID) (uint64, error) {
 	tbl := table.Identifier{tid.Namespace, tid.Name}
-	itable, err := s.cat.LoadTable(context.TODO(), tbl, s.props)
+	itable, err := s.cat.LoadTable(context.TODO(), tbl)
 	if err != nil {
 		return 0, xerrors.Errorf("unable to load table: %v: %w", tbl, err)
 	}
@@ -177,7 +177,7 @@ func (s *Storage) EstimateTableRowsCount(tid abstract.TableID) (uint64, error) {
 
 func (s *Storage) TableExists(tid abstract.TableID) (bool, error) {
 	tbl := table.Identifier{tid.Namespace, tid.Name}
-	_, err := s.cat.LoadTable(context.TODO(), tbl, s.props)
+	_, err := s.cat.LoadTable(context.TODO(), tbl)
 	if err != nil {
 		return false, xerrors.Errorf("unable to load table: %v: %w", tbl, err)
 	}

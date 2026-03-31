@@ -53,10 +53,12 @@ func (p *Provider) Sink(config middlewares.Config) (abstract.Sinker, error) {
 		return NewSinkStreaming(dst, p.cp, p.transfer, p.logger)
 	}
 
-	if !p.transfer.SnapshotOnly() {
-		return nil, xerrors.Errorf("only snapshot and streaming supported")
+	if p.transfer.SnapshotOnly() {
+		return NewSinkSnapshot(dst, p.cp, p.transfer)
 	}
-	return NewSinkSnapshot(dst, p.cp, p.transfer)
+
+	// CDC replication (PG/MySQL WAL)
+	return NewSinkReplication(dst, p.cp, p.transfer, p.logger)
 }
 
 func (p Provider) Type() abstract.ProviderType {

@@ -118,9 +118,9 @@ func (s *SinkStreaming) ensureTable(ctx context.Context, item abstract.ChangeIte
 	tblIdent := s.createTableIdent(item)
 
 	// Try to load existing table
-	existingTable, err := s.catalog.LoadTable(ctx, tblIdent, s.cfg.Properties)
+	existingTable, err := s.catalog.LoadTable(ctx, tblIdent)
 	if err == nil {
-		s.lgr.Infof("table %s already exists: props: %v", tblIdent, s.cfg.Properties)
+		s.lgr.Infof("table %s already exists", tblIdent)
 		return existingTable, nil
 	}
 
@@ -256,14 +256,14 @@ func (s *SinkStreaming) commitTables() error {
 		}
 		// Load table
 		tblIdent := table.Identifier{tid.Namespace, tid.Name}
-		tbl, err := s.catalog.LoadTable(ctx, tblIdent, s.cfg.Properties)
+		tbl, err := s.catalog.LoadTable(ctx, tblIdent)
 		if err != nil {
 			continue
 		}
 
 		// Create transaction and add files
 		tx := tbl.NewTransaction()
-		if err := tx.AddFiles(files, s.cfg.SnapshotProps, false); err != nil {
+		if err := tx.AddFiles(ctx, files, s.cfg.SnapshotProps, false); err != nil {
 			return xerrors.Errorf("add files for table %s: %w", tableID, err)
 		}
 
@@ -327,7 +327,7 @@ func (s *SinkStreaming) parseTableID(tableID string) []string {
 // clearState removes committed files from coordinator
 func (s *SinkStreaming) clearState(tableID string) error {
 	s.mu.Lock()
-	// Get all keys for this table
+	defer s.mu.Unlock()
 
 	state, err := s.cp.GetTransferState(s.transfer.ID)
 	if err != nil {
@@ -337,7 +337,6 @@ func (s *SinkStreaming) clearState(tableID string) error {
 	// Clear files for this table
 	for key := range state {
 		if extractTableIDFromKey(key) == tableID {
-			// Set empty array for this key
 			if err := s.cp.RemoveTransferState(s.transfer.ID, []string{key}); err != nil {
 				return xerrors.Errorf("clear files for key %s: %w", key, err)
 			}
@@ -346,7 +345,6 @@ func (s *SinkStreaming) clearState(tableID string) error {
 
 	// Clear local files cache
 	s.files[tableID] = []string{}
-	s.mu.Unlock()
 
 	return nil
 }
