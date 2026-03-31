@@ -250,7 +250,10 @@ func (s *SinkStreaming) commitTables() error {
 		}
 
 		// Extract schema and table name from tableID
-		tid, _ := abstract.ParseTableID(tableID)
+		tid, err := abstract.NewTableIDFromString(tableID)
+		if err != nil {
+			continue
+		}
 		if tid.Namespace == "" {
 			tid.Namespace = s.cfg.DefaultNamespace
 		}

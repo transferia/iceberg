@@ -11,11 +11,12 @@ import (
 	"github.com/transferia/transferia/library/go/core/xerrors"
 	"github.com/transferia/transferia/pkg/abstract"
 	"github.com/transferia/transferia/pkg/abstract/model"
+	"go.uber.org/zap/zapcore"
 )
 
 // To verify providers contract implementation
 var (
-	_ model.Destination = (*Destination)(nil)
+	_ model.LoggableDestination = (*Destination)(nil)
 )
 
 type Destination struct {
@@ -51,6 +52,12 @@ func (i *Destination) Validate() error {
 
 // WithDefaults implements model.Destination.
 func (i *Destination) WithDefaults() {
+}
+
+func (i *Destination) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("catalog_type", i.CatalogType)
+	enc.AddString("catalog_uri", i.CatalogURI)
+	return nil
 }
 
 // NewCatalog creates an Iceberg catalog from the destination config.

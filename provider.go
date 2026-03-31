@@ -22,13 +22,11 @@ var (
 )
 
 func init() {
-	sourceFactory := func() model.Source {
-		return new(Source)
-	}
-
 	gob.Register(new(Source))
-	model.RegisterSource(ProviderType, sourceFactory)
-	model.RegisterDestination(ProviderType, func() model.Destination {
+	model.RegisterSource(ProviderType, func() model.LoggableSource {
+		return new(Source)
+	})
+	model.RegisterDestination(ProviderType, func() model.LoggableDestination {
 		return new(Destination)
 	})
 	abstract.RegisterProviderName(ProviderType, "Iceberg")
@@ -74,7 +72,7 @@ func (p Provider) Storage() (abstract.Storage, error) {
 	return NewStorage(src, p.logger, p.registry)
 }
 
-func New(lgr log.Logger, registry metrics.Registry, cp coordinator.Coordinator, transfer *model.Transfer) providers.Provider {
+func New(lgr log.Logger, registry metrics.Registry, cp coordinator.Coordinator, transfer *model.Transfer, _ *model.TransferOperation) providers.Provider {
 	return &Provider{
 		logger:   lgr,
 		registry: registry,
