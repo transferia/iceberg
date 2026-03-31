@@ -85,7 +85,7 @@ func TestReplication(t *testing.T) {
 		k := []byte(fmt.Sprintf(`any_key_%v`, i))
 		v := []byte(fmt.Sprintf(`{"id": "%v", "level": "my_level", "caller": "my_caller", "msg": "my_msg"}`, i))
 		err = srcSink.Push([]abstract.ChangeItem{
-			kafkasink.MakeKafkaRawMessage(source.Topic, time.Time{}, source.Topic, 0, int64(i), k, v),
+			abstract.MakeRawMessage(k, source.Topic, time.Time{}, source.Topic, 0, int64(i), v),
 		})
 		require.NoError(t, err)
 	}
@@ -136,13 +136,14 @@ func TestMultiPartitionReplication(t *testing.T) {
 				v := []byte(fmt.Sprintf(`{"id": "%d", "level": "level_%d", "caller": "partition_%d", "msg": "message_%d"}`,
 					globalID, part, part, offset))
 				if err := srcSink.Push([]abstract.ChangeItem{
-					kafkasink.MakeKafkaRawMessage(
+					abstract.MakeRawMessage(
+						k,
 						source.Topic,
 						time.Now(),
 						source.Topic,
 						part,          // partition/shard
 						int64(offset), // offset within partition
-						k, v,
+						v,
 					),
 				}); err != nil {
 					errCh <- fmt.Errorf("partition %d offset %d: %w", part, offset, err)
@@ -205,9 +206,9 @@ func TestMultiPartitionHighThroughput(t *testing.T) {
 				k := []byte(fmt.Sprintf(`key_p%d_%d`, part, offset))
 				v := []byte(fmt.Sprintf(`{"id": "%d", "level": "info", "caller": "worker_%d", "msg": "batch_msg_%d"}`,
 					globalID, part, offset))
-				batch = append(batch, kafkasink.MakeKafkaRawMessage(
-					source.Topic, time.Now(), source.Topic,
-					part, int64(offset), k, v,
+				batch = append(batch, abstract.MakeRawMessage(
+					k, source.Topic, time.Now(), source.Topic,
+					part, int64(offset), v,
 				))
 				if len(batch) >= 10 {
 					if err := srcSink.Push(batch); err != nil {

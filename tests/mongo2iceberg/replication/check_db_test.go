@@ -41,9 +41,9 @@ func TestSnapshotAndReplication(t *testing.T) {
 		source,
 		databaseName,
 		collectionName,
-		bson.D{{"_id", "1"}, {"name", "alice"}, {"val", 100}},
-		bson.D{{"_id", "2"}, {"name", "bob"}, {"val", 200}},
-		bson.D{{"_id", "3"}, {"name", "charlie"}, {"val", 300}},
+		bson.D{{Key: "_id", Value: "1"}, {Key: "name", Value: "alice"}, {Key: "val", Value: 100}},
+		bson.D{{Key: "_id", Value: "2"}, {Key: "name", Value: "bob"}, {Key: "val", Value: 200}},
+		bson.D{{Key: "_id", Value: "3"}, {Key: "name", Value: "charlie"}, {Key: "val", Value: 300}},
 	))
 
 	transfer := helpers.MakeTransfer(helpers.TransferID, source, target, abstract.TransferTypeSnapshotAndIncrement)
@@ -83,7 +83,7 @@ func TestReplicationOnly(t *testing.T) {
 		source,
 		databaseName,
 		collectionName,
-		bson.D{{"_id", "seed"}, {"name", "seed"}, {"val", 0}},
+		bson.D{{Key: "_id", Value: "seed"}, {Key: "name", Value: "seed"}, {Key: "val", Value: 0}},
 	))
 
 	transfer := helpers.MakeTransfer(helpers.TransferID, source, target, abstract.TransferTypeIncrementOnly)
@@ -100,7 +100,7 @@ func TestReplicationOnly(t *testing.T) {
 			source,
 			databaseName,
 			collectionName,
-			bson.D{{"_id", i}, {"name", "user"}, {"val", i * 100}},
+			bson.D{{Key: "_id", Value: i}, {Key: "name", Value: "user"}, {Key: "val", Value: i * 100}},
 		))
 	}
 

@@ -199,10 +199,6 @@ func (s *SinkReplication) flushLocked() error {
 		return nil
 	}
 
-	for tableID, batch := range tableBatches {
-		s.lgr.Info("Flushing table", log.String("table", tableID), log.Int("items", len(batch.items)), log.UInt64("maxLSN", batch.maxLSN))
-	}
-
 	// Process each table and collect commit data
 	commitData := make(map[string]*tableCommitDataInternal)
 
@@ -254,14 +250,7 @@ func (s *SinkReplication) flushLocked() error {
 		return nil
 	}
 
-	if err := s.commitAllInternal(ctx, commitData); err != nil {
-		s.lgr.Error("Commit failed", log.Error(err))
-		return err
-	}
-	for tableID, d := range commitData {
-		s.lgr.Info("Committed table", log.String("table", tableID), log.Int("dataFiles", len(d.dataFiles)), log.Int("deletes", len(d.deletes)))
-	}
-	return nil
+	return s.commitAllInternal(ctx, commitData)
 }
 
 // ensureTable loads or creates the Iceberg table.
