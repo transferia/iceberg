@@ -180,7 +180,7 @@ func (s *SinkReplication) flushLocked() error {
 	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Minute)
 	defer cancel()
 
-	// Drain all buffers
+	// Snapshot buffers (drain only after successful commit)
 	type tableFlushData struct {
 		items  []abstract.ChangeItem
 		schema *abstract.TableSchema
@@ -198,6 +198,23 @@ func (s *SinkReplication) flushLocked() error {
 	if len(tableBatches) == 0 {
 		return nil
 	}
+
+	// On failure, re-buffer the items so they aren't lost
+	defer func() {
+		for tableID, batch := range tableBatches {
+			if batch.items == nil {
+				continue // already committed
+			}
+			buf, ok := s.buffers[tableID]
+			if !ok {
+				buf = newTableBuffer()
+				s.buffers[tableID] = buf
+			}
+			for _, item := range batch.items {
+				buf.Append(item)
+			}
+		}
+	}()
 
 	// Process each table and collect commit data
 	commitData := make(map[string]*tableCommitDataInternal)
@@ -247,10 +264,22 @@ func (s *SinkReplication) flushLocked() error {
 	}
 
 	if len(commitData) == 0 {
+		// All items deduped to nothing — mark as committed
+		for _, batch := range tableBatches {
+			batch.items = nil
+		}
 		return nil
 	}
 
-	return s.commitAllInternal(ctx, commitData)
+	if err := s.commitAllInternal(ctx, commitData); err != nil {
+		return err
+	}
+
+	// Mark committed batches so defer doesn't re-buffer them
+	for _, batch := range tableBatches {
+		batch.items = nil
+	}
+	return nil
 }
 
 // ensureTable loads or creates the Iceberg table.
@@ -270,8 +299,12 @@ func (s *SinkReplication) ensureTable(ctx context.Context, item abstract.ChangeI
 
 	// Table doesn't exist — ensure namespace exists, then create with format-version=2
 	ns := table.Identifier{ident[0]}
-	if exists, _ := s.catalog.CheckNamespaceExists(ctx, ns); !exists {
-		_ = s.catalog.CreateNamespace(ctx, ns, nil)
+	if exists, err := s.catalog.CheckNamespaceExists(ctx, ns); err != nil {
+		s.lgr.Warn("Failed to check namespace existence", log.String("namespace", ident[0]), log.Error(err))
+	} else if !exists {
+		if err := s.catalog.CreateNamespace(ctx, ns, nil); err != nil {
+			s.lgr.Warn("Failed to create namespace", log.String("namespace", ident[0]), log.Error(err))
+		}
 	}
 
 	schema, err := ConvertToIcebergSchema(item.TableSchema)
@@ -445,7 +478,7 @@ func (s *SinkReplication) commitPerTable(ctx context.Context, data map[string]*t
 		if err != nil {
 			return xerrors.Errorf("commit for %s: %w", tableID, err)
 		}
-		s.tableCache[tableID] = newTbl
+		s.tableCache[tableCacheKey(newTbl.Identifier())] = newTbl
 	}
 	return nil
 }
@@ -471,9 +504,12 @@ func prepareChanges(items []abstract.ChangeItem) (inserts []abstract.ChangeItem,
 	// Determine PK column names from the first item with OldKeys or TableSchema
 	pkNames := extractPKNames(items)
 	if len(pkNames) == 0 {
-		// No PK — treat everything as inserts (append-only fallback)
+		// No PK — append-only fallback. DELETE events are dropped since
+		// equality deletes require a primary key. UPDATE "after" rows are
+		// appended as inserts (no dedup possible without PK).
 		for _, item := range items {
-			if item.Kind == abstract.InsertKind || item.Kind == abstract.UpdateKind {
+			switch item.Kind {
+			case abstract.InsertKind, abstract.UpdateKind:
 				inserts = append(inserts, item)
 			}
 		}

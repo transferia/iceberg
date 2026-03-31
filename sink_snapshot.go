@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/apache/iceberg-go/catalog"
-	"github.com/apache/iceberg-go/catalog/glue"
-	"github.com/apache/iceberg-go/catalog/rest"
 	"github.com/apache/iceberg-go/table"
 
 	"github.com/transferia/transferia/library/go/core/xerrors"
@@ -222,20 +220,9 @@ func (s *SinkSnapshot) storeFile(name string) {
 }
 
 func NewSinkSnapshot(cfg *Destination, cp coordinator.Coordinator, transfer *model.Transfer) (*SinkSnapshot, error) {
-	var cat catalog.Catalog
-	if cfg.CatalogType == "rest" {
-		var err error
-		cat, err = rest.NewCatalog(
-			context.Background(),
-			cfg.CatalogType,
-			cfg.CatalogURI,
-			rest.WithAdditionalProps(cfg.Properties),
-		)
-		if err != nil {
-			return nil, xerrors.Errorf("unable to init catalog: %w", err)
-		}
-	} else if cfg.CatalogType == "glue" {
-		cat = glue.NewCatalog()
+	cat, err := cfg.NewCatalog()
+	if err != nil {
+		return nil, xerrors.Errorf("unable to init catalog: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

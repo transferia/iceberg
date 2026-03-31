@@ -4,8 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/apache/iceberg-go/catalog/glue"
-	"github.com/apache/iceberg-go/catalog/rest"
 	_ "github.com/apache/iceberg-go/io/gocloud"
 	"github.com/transferia/transferia/pkg/abstract/changeitem"
 
@@ -261,15 +259,15 @@ func trimSuffix(s string) string {
 }
 
 func NewStorage(src *Source, logger log.Logger, registry metrics.Registry) (*Storage, error) {
-	var cat catalog.Catalog
-	if src.CatalogType == "rest" {
-		var err error
-		cat, err = rest.NewCatalog(context.Background(), src.CatalogType, src.CatalogURI, rest.WithAdditionalProps(src.Properties))
-		if err != nil {
-			return nil, xerrors.Errorf("unable to init catalog: %w", err)
-		}
-	} else if src.CatalogType == "glue" {
-		cat = glue.NewCatalog()
+	// Source shares the same catalog config shape as Destination
+	dst := &Destination{
+		Properties:  src.Properties,
+		CatalogType: src.CatalogType,
+		CatalogURI:  src.CatalogURI,
+	}
+	cat, err := dst.NewCatalog()
+	if err != nil {
+		return nil, xerrors.Errorf("unable to init catalog: %w", err)
 	}
 	return &Storage{
 		cfg:      src,
