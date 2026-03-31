@@ -13,7 +13,7 @@ require (
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
-	github.com/transferia/transferia v0.0.6-rc0
+	github.com/transferia/transferia v0.0.6-rc3
 	go.mongodb.org/mongo-driver v1.17.3
 	go.uber.org/zap v1.27.1
 	go.ytsaurus.tech/library/go/core/log v0.0.5-0.20260331112941-0ba68ccc524f
@@ -356,3 +356,7 @@ replace github.com/jackc/pgproto3/v2 => github.com/jackc/pgproto3/v2 v2.3.2
 replace github.com/nexus-rpc/sdk-go => github.com/nexus-rpc/sdk-go v0.0.7
 
 replace github.com/mattn/go-sqlite3 => github.com/mattn/go-sqlite3 v1.14.24
+
+replace github.com/segmentio/kafka-go => github.com/transferia/kafka-go v0.4.48-transferia
+
+replace github.com/confluentinc/confluent-kafka-go/v2 => github.com/confluentinc/confluent-kafka-go/v2 v2.1.1
