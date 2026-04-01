@@ -95,6 +95,30 @@ The Iceberg Provider also implements a Streaming Sink mechanism that:
 
 **Note**: It's for append-only sources, not for CDC
 
+### CDC Replication Sink (NEW)
+
+Full **Change Data Capture** replication from PostgreSQL to Iceberg v2 tables using [iceberg-go](https://github.com/apache/iceberg-go) — entirely in Go, no JVM required.
+
+**What works:**
+- INSERT, UPDATE, DELETE replication via Iceberg v2 equality deletes (merge-on-read)
+- Snapshot + incremental replication (WAL-based CDC)
+- Automatic table creation with schema inference from source
+- PK-based row deduplication within commit batches
+- Time-based flush with configurable commit interval
+
+**Benchmark results** (Apple M1 Pro, local MinIO + REST catalog):
+
+| Profile | Duration | Rows | Avg Rate | Lag | Data Loss |
+|---------|----------|------|----------|-----|-----------|
+| InsertOnly (1K→10K ramp) | 5 min | 1.35M | 4,500 rows/s | ~3s | 0 |
+
+**Key numbers:**
+- **6,400 rows/sec** peak write throughput
+- **3 second** steady-state replication lag
+- **Zero data loss** — Iceberg row count matches PG row count exactly after drain
+
+For details, see [benchmark README](tests/bench/README.md) and [equality delete performance analysis](doc/equality-delete-performance.md).
+
 ## Contributing
 
 This project is part of the Transferia ecosystem and follows its contribution guidelines. Please refer to the main [Transferia repository](https://github.com/transferia/transferia) for more information. 
