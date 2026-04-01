@@ -126,31 +126,32 @@ Avg write rate:    394 rows/sec
 ### Full profile (InsertOnly, 1K→10K rows/sec, 5 minutes)
 
 ```
-[10s]  PG:12955   Iceberg:8435    Lag:4520    Rate:1295/s
-[30s]  PG:56607   Iceberg:48499   Lag:8108    Rate:2489/s
-[1m0s] PG:165027  Iceberg:151640  Lag:13387   Rate:4205/s
-[2m0s] PG:504555  Iceberg:486708  Lag:17847   Rate:5908/s
-[3m0s] PG:828505  Iceberg:812769  Lag:15736   Rate:4678/s
-[4m0s] PG:1137715 Iceberg:1122591 Lag:15124   Rate:4837/s
-[5m0s] PG:1327123 Iceberg:1307147 Lag:19976   Rate:4076/s
+[10s]  PG:12829   Iceberg:8403    Lag:4426  (3.5s)  Rate:1282/s
+[30s]  PG:55896   Iceberg:47797   Lag:8099  (3.3s)  Rate:2475/s
+[1m0s] PG:166179  Iceberg:152966  Lag:13213 (3.1s)  Rate:4262/s
+[2m0s] PG:497170  Iceberg:480148  Lag:17022 (3.0s)  Rate:5759/s
+[3m0s] PG:840906  Iceberg:823966  Lag:16940 (3.0s)  Rate:5566/s
+[4m0s] PG:1142241 Iceberg:1127295 Lag:14946 (3.1s)  Rate:4791/s
+[5m0s] PG:1327039 Iceberg:1269608 Lag:57431 (8.9s)  Rate:6441/s
 
 === Benchmark Results ===
 Profile:           InsertOnly
 Duration:          5m0s
-PG rows written:   1,327,123 (I:1,327,123 U:0 D:0)
-Iceberg rows:      1,327,123
-Replication lag:   0 rows (peak: 23,131, avg: 14,459)
-Peak write rate:   6,022 rows/sec
-Avg write rate:    4,423 rows/sec
+PG rows written:   1,351,466 (I:1,351,466 U:0 D:0)
+Iceberg rows:      1,351,466
+Replication lag:   0 rows / 0.0s (peak: 19,775 rows / 3.5s, avg: 13,516 rows / 3.1s)
+Peak write rate:   6,441 rows/sec
+Avg write rate:    4,504 rows/sec
 ========================
 ```
 
 Key observations:
-- **Zero data loss**: 1.3M Iceberg rows match PG rows exactly
-- **Bounded lag**: Steady-state lag ~15-20K rows (~3 commit cycles at 5s interval)
-- **Sustained throughput**: 4,400+ rows/sec average over 5 minutes
-- **Peak**: 6,022 rows/sec with 8 concurrent PG writer goroutines
+- **Zero data loss**: 1.35M Iceberg rows match PG rows exactly after drain
+- **~3 second lag**: Steady-state replication lag is 3.0-3.5 seconds throughout the run
+- **Sustained throughput**: 4,500+ rows/sec average over 5 minutes
+- **Peak**: 6,441 rows/sec with 8 concurrent PG writer goroutines
 - **Lag catches up**: Drops to 0 within 30s after load stops
+- **Commit interval**: 5s flush produces ~60 commits over 5 minutes (~22K rows/commit)
 
 ## What to Look For
 

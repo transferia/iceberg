@@ -20,7 +20,8 @@ type MetricsSample struct {
 	PGDeletes       int64
 	IcebergRows     uint64
 	LagRows         int64
-	CurrentRate     int64 // rows/sec since last sample
+	LagSeconds      float64 // estimated lag in seconds (LagRows / CurrentRate)
+	CurrentRate     int64   // rows/sec since last sample
 }
 
 // BenchmarkResult holds the final benchmark summary.
@@ -31,13 +32,16 @@ type BenchmarkResult struct {
 	PGInserts     int64
 	PGUpdates     int64
 	PGDeletes     int64
-	IcebergRows   uint64
-	LagRows       int64
-	PeakLagRows   int64
-	AvgLagRows    int64
-	PeakRate      int64
-	AvgRate       int64
-	Samples       []MetricsSample
+	IcebergRows    uint64
+	LagRows        int64
+	LagSeconds     float64
+	PeakLagRows    int64
+	PeakLagSeconds float64
+	AvgLagRows     int64
+	AvgLagSeconds  float64
+	PeakRate       int64
+	AvgRate        int64
+	Samples        []MetricsSample
 }
 
 func (r *BenchmarkResult) String() string {
@@ -47,7 +51,8 @@ func (r *BenchmarkResult) String() string {
 	sb.WriteString(fmt.Sprintf("Duration:          %s\n", r.Duration.Truncate(time.Second)))
 	sb.WriteString(fmt.Sprintf("PG rows written:   %d (I:%d U:%d D:%d)\n", r.PGRowsWritten, r.PGInserts, r.PGUpdates, r.PGDeletes))
 	sb.WriteString(fmt.Sprintf("Iceberg rows:      %d\n", r.IcebergRows))
-	sb.WriteString(fmt.Sprintf("Replication lag:   %d rows (peak: %d, avg: %d)\n", r.LagRows, r.PeakLagRows, r.AvgLagRows))
+	sb.WriteString(fmt.Sprintf("Replication lag:   %d rows / %.1fs (peak: %d rows / %.1fs, avg: %d rows / %.1fs)\n",
+		r.LagRows, r.LagSeconds, r.PeakLagRows, r.PeakLagSeconds, r.AvgLagRows, r.AvgLagSeconds))
 	sb.WriteString(fmt.Sprintf("Peak write rate:   %d rows/sec\n", r.PeakRate))
 	sb.WriteString(fmt.Sprintf("Avg write rate:    %d rows/sec\n", r.AvgRate))
 	sb.WriteString("========================\n")
@@ -93,11 +98,12 @@ func (m *MetricsCollector) Run(ctx context.Context) {
 			m.samples = append(m.samples, sample)
 			m.mu.Unlock()
 
-			fmt.Printf("[%s] PG:%d  Iceberg:%d  Lag:%d  Rate:%d/s\n",
+			fmt.Printf("[%s] PG:%d  Iceberg:%d  Lag:%d (%.1fs)  Rate:%d/s\n",
 				sample.Elapsed.Truncate(time.Second),
 				sample.PGRowsWritten,
 				sample.IcebergRows,
 				sample.LagRows,
+				sample.LagSeconds,
 				sample.CurrentRate,
 			)
 		case <-ctx.Done():
@@ -131,6 +137,11 @@ func (m *MetricsCollector) collect(start time.Time, lastTotal *int64) MetricsSam
 		lag = 0
 	}
 
+	lagSec := float64(0)
+	if ratePerSec > 0 {
+		lagSec = float64(lag) / float64(ratePerSec)
+	}
+
 	return MetricsSample{
 		Timestamp:     time.Now(),
 		Elapsed:       time.Since(start),
@@ -140,6 +151,7 @@ func (m *MetricsCollector) collect(start time.Time, lastTotal *int64) MetricsSam
 		PGDeletes:     deletes,
 		IcebergRows:   icebergRows,
 		LagRows:       lag,
+		LagSeconds:    lagSec,
 		CurrentRate:   ratePerSec,
 	}
 }
@@ -158,6 +170,8 @@ func (m *MetricsCollector) Result(profile string, duration time.Duration) *Bench
 	}
 
 	var peakRate, peakLag, totalLag int64
+	var peakLagSec, totalLagSec float64
+	activeSamples := 0 // samples where write rate > 0 (during active load)
 	for _, s := range m.samples {
 		if s.CurrentRate > peakRate {
 			peakRate = s.CurrentRate
@@ -165,7 +179,14 @@ func (m *MetricsCollector) Result(profile string, duration time.Duration) *Bench
 		if s.LagRows > peakLag {
 			peakLag = s.LagRows
 		}
-		totalLag += s.LagRows
+		if s.LagSeconds > peakLagSec {
+			peakLagSec = s.LagSeconds
+		}
+		if s.CurrentRate > 0 {
+			totalLag += s.LagRows
+			totalLagSec += s.LagSeconds
+			activeSamples++
+		}
 	}
 
 	avgRate := int64(0)
@@ -174,28 +195,37 @@ func (m *MetricsCollector) Result(profile string, duration time.Duration) *Bench
 	}
 
 	avgLag := int64(0)
-	if len(m.samples) > 0 {
-		avgLag = totalLag / int64(len(m.samples))
+	avgLagSec := float64(0)
+	if activeSamples > 0 {
+		avgLag = totalLag / int64(activeSamples)
+		avgLagSec = totalLagSec / float64(activeSamples)
 	}
 
 	lag := total - int64(icebergRows)
 	if lag < 0 {
 		lag = 0
 	}
+	lagSec := float64(0)
+	if avgRate > 0 {
+		lagSec = float64(lag) / float64(avgRate)
+	}
 
 	return &BenchmarkResult{
-		Profile:       profile,
-		Duration:      duration,
-		PGRowsWritten: total,
-		PGInserts:     inserts,
-		PGUpdates:     updates,
-		PGDeletes:     deletes,
-		IcebergRows:   icebergRows,
-		LagRows:       lag,
-		PeakLagRows:   peakLag,
-		AvgLagRows:    avgLag,
-		PeakRate:      peakRate,
-		AvgRate:       avgRate,
-		Samples:       m.samples,
+		Profile:        profile,
+		Duration:       duration,
+		PGRowsWritten:  total,
+		PGInserts:      inserts,
+		PGUpdates:      updates,
+		PGDeletes:      deletes,
+		IcebergRows:    icebergRows,
+		LagRows:        lag,
+		LagSeconds:     lagSec,
+		PeakLagRows:    peakLag,
+		PeakLagSeconds: peakLagSec,
+		AvgLagRows:     avgLag,
+		AvgLagSeconds:  avgLagSec,
+		PeakRate:       peakRate,
+		AvgRate:        avgRate,
+		Samples:        m.samples,
 	}
 }
