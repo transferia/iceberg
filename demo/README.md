@@ -43,13 +43,32 @@ The transfer will:
 
 ### 4. Generate changes
 
-In another terminal, run DML against PostgreSQL:
+**Option A: Load generator** (recommended) — runs a mix of INSERT/UPDATE/DELETE at a steady rate:
 
 ```bash
-psql "host=localhost port=5432 user=postgres password=postgres dbname=demo" -f demo/workload.sql
+# Default: 10 ops/sec for 60s (60% insert, 30% update, 10% delete)
+./demo/loadgen.sh
+
+# Crank it up
+./demo/loadgen.sh --rate 50 --duration 120
+
+# Heavy update/delete workload (watch equality deletes accumulate in MinIO)
+./demo/loadgen.sh --rate 20 --insert 30 --update 40
 ```
 
-Or run ad-hoc SQL:
+Output:
+```
+=== CDC Load Generator ===
+Rate:     10 ops/sec
+Duration: 60s (~600 ops)
+Mix:      60% insert / 30% update / 10% delete
+==========================
+[10s] ops: 100/600 (I:62 U:28 D:10 E:0) PG rows: 153
+[20s] ops: 200/600 (I:121 U:57 D:22 E:0) PG rows: 200
+...
+```
+
+**Option B: Ad-hoc SQL** — run individual statements:
 
 ```bash
 psql "host=localhost port=5432 user=postgres password=postgres dbname=demo"
@@ -57,6 +76,12 @@ psql "host=localhost port=5432 user=postgres password=postgres dbname=demo"
 INSERT INTO orders (customer, product, quantity, price) VALUES ('zara', 'widget-z', 1, 9.99);
 UPDATE orders SET status = 'delivered' WHERE customer = 'zara';
 DELETE FROM orders WHERE customer = 'frank';
+```
+
+**Option C: Scripted workload** — a fixed set of INSERT/UPDATE/DELETE:
+
+```bash
+psql "host=localhost port=5432 user=postgres password=postgres dbname=demo" -f demo/workload.sql
 ```
 
 ### 5. Observe
