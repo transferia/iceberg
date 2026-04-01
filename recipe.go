@@ -83,3 +83,19 @@ func DestinationRowCount(target *Destination, schema, table string) (uint64, err
 	}
 	return rowsInSrc, nil
 }
+
+// LoadTable loads an Iceberg table by namespace and name. Useful for
+// inspecting table metadata, snapshot summary, and file statistics.
+// LoadTable loads an Iceberg table by namespace and name. Useful for
+// inspecting table metadata, snapshot summary, and file statistics.
+func LoadTable(target *Destination, namespace, tableName string) (*iceTable.Table, error) {
+	cat, err := target.NewCatalog()
+	if err != nil {
+		return nil, xerrors.Errorf("unable to init catalog: %w", err)
+	}
+	tbl, err := cat.LoadTable(context.Background(), iceTable.Identifier{namespace, tableName})
+	if err != nil {
+		return nil, xerrors.Errorf("unable to load table: %w", err)
+	}
+	return tbl, nil
+}
