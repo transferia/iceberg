@@ -122,7 +122,12 @@ func (s *SinkStreaming) ensureTable(ctx context.Context, item abstract.ChangeIte
 		return existingTable, nil
 	}
 
-	// Create new table
+	// Ensure namespace exists, then create table
+	ns := table.Identifier{tblIdent[0]}
+	if exists, _ := s.catalog.CheckNamespaceExists(ctx, ns); !exists {
+		_ = s.catalog.CreateNamespace(ctx, ns, nil)
+	}
+
 	schema, err := ConvertToIcebergSchema(item.TableSchema)
 	if err != nil {
 		return nil, xerrors.Errorf("converting to IcebergSchema: %w", err)

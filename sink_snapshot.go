@@ -175,6 +175,12 @@ func (s *SinkSnapshot) ensureTable(ctx context.Context, item abstract.ChangeItem
 		return existingTable, nil
 	}
 
+	// Ensure namespace exists
+	ns := table.Identifier{tbl[0]}
+	if exists, _ := s.catalog.CheckNamespaceExists(ctx, ns); !exists {
+		_ = s.catalog.CreateNamespace(ctx, ns, nil)
+	}
+
 	schema, err := ConvertToIcebergSchema(item.TableSchema)
 	if err != nil {
 		return nil, xerrors.Errorf("converting to IcebergSchema: %w", err)
