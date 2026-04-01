@@ -33,6 +33,8 @@ type BenchmarkResult struct {
 	PGDeletes     int64
 	IcebergRows   uint64
 	LagRows       int64
+	PeakLagRows   int64
+	AvgLagRows    int64
 	PeakRate      int64
 	AvgRate       int64
 	Samples       []MetricsSample
@@ -45,7 +47,7 @@ func (r *BenchmarkResult) String() string {
 	sb.WriteString(fmt.Sprintf("Duration:          %s\n", r.Duration.Truncate(time.Second)))
 	sb.WriteString(fmt.Sprintf("PG rows written:   %d (I:%d U:%d D:%d)\n", r.PGRowsWritten, r.PGInserts, r.PGUpdates, r.PGDeletes))
 	sb.WriteString(fmt.Sprintf("Iceberg rows:      %d\n", r.IcebergRows))
-	sb.WriteString(fmt.Sprintf("Replication lag:   %d rows\n", r.LagRows))
+	sb.WriteString(fmt.Sprintf("Replication lag:   %d rows (peak: %d, avg: %d)\n", r.LagRows, r.PeakLagRows, r.AvgLagRows))
 	sb.WriteString(fmt.Sprintf("Peak write rate:   %d rows/sec\n", r.PeakRate))
 	sb.WriteString(fmt.Sprintf("Avg write rate:    %d rows/sec\n", r.AvgRate))
 	sb.WriteString("========================\n")
@@ -155,16 +157,25 @@ func (m *MetricsCollector) Result(profile string, duration time.Duration) *Bench
 		icebergRows = rows
 	}
 
-	var peakRate int64
+	var peakRate, peakLag, totalLag int64
 	for _, s := range m.samples {
 		if s.CurrentRate > peakRate {
 			peakRate = s.CurrentRate
 		}
+		if s.LagRows > peakLag {
+			peakLag = s.LagRows
+		}
+		totalLag += s.LagRows
 	}
 
 	avgRate := int64(0)
 	if duration.Seconds() > 0 {
 		avgRate = total / int64(duration.Seconds())
+	}
+
+	avgLag := int64(0)
+	if len(m.samples) > 0 {
+		avgLag = totalLag / int64(len(m.samples))
 	}
 
 	lag := total - int64(icebergRows)
@@ -181,6 +192,8 @@ func (m *MetricsCollector) Result(profile string, duration time.Duration) *Bench
 		PGDeletes:     deletes,
 		IcebergRows:   icebergRows,
 		LagRows:       lag,
+		PeakLagRows:   peakLag,
+		AvgLagRows:    avgLag,
 		PeakRate:      peakRate,
 		AvgRate:       avgRate,
 		Samples:       m.samples,
