@@ -18,7 +18,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23.6"
+          go-version: "1.25.5"
       - shell: bash
         run: |
           make build
@@ -33,7 +33,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23.6"
+          go-version: "1.25.5"
       - shell: bash
         run: |
           go install gotest.tools/gotestsum@latest
@@ -45,14 +45,39 @@ jobs:
         run: |
           pg_dump --version
       - shell: bash
-        name: prepare local Spark
+        name: prepare local infra
         run: |
           docker compose -f recipe/docker-compose.yml up -d
-          sleep 5
-          docker compose -f recipe/docker-compose.yml exec -T spark-iceberg ipython ./provision.py
-          sleep 5
+          # Wait for MinIO to be ready and bucket to be created by mc container
+          for i in $(seq 1 30); do
+            if docker exec minio mc ls local/warehouse 2>/dev/null; then
+              echo "MinIO warehouse bucket ready"
+              break
+            fi
+            echo "Waiting for MinIO bucket... ($i/30)"
+            sleep 2
+          done
+          # Ensure bucket exists (in case mc container failed)
+          docker exec minio mc alias set local http://localhost:9000 admin password || true
+          docker exec minio mc mb local/warehouse --ignore-existing || true
+          docker exec minio mc anonymous set public local/warehouse || true
+          # Wait for Iceberg REST catalog
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:8181/v1/config > /dev/null 2>&1; then
+              echo "Iceberg REST catalog ready"
+              break
+            fi
+            echo "Waiting for REST catalog... ($i/15)"
+            sleep 2
+          done
+          # Run Spark provisioning (optional — creates test tables for non-CDC tests)
+          docker compose -f recipe/docker-compose.yml exec -T spark-iceberg ipython ./provision.py || echo "Spark provision failed (non-fatal for CDC tests)"
+          # Export container IPs for test env
           echo "AWS_S3_ENDPOINT=http://$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' minio):9000" >> $GITHUB_ENV
           echo "CATALOG_ENDPOINT=http://$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' iceberg-rest):8181" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=admin" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=password" >> $GITHUB_ENV
+          echo "AWS_REGION=us-east-1" >> $GITHUB_ENV
       - shell: bash
         run: |
           make run-tests

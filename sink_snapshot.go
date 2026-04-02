@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/apache/iceberg-go/catalog"
-	"github.com/apache/iceberg-go/catalog/glue"
-	"github.com/apache/iceberg-go/catalog/rest"
 	"github.com/apache/iceberg-go/table"
 
 	"github.com/transferia/transferia/library/go/core/xerrors"
@@ -104,7 +102,7 @@ func (s *SinkSnapshot) processControlEvent(item abstract.ChangeItem) error {
 			return xerrors.Errorf("ensure table: %w", err)
 		}
 		tx := tbl.NewTransaction()
-		if err := tx.AddFiles(files, s.cfg.SnapshotProps, false); err != nil {
+		if err := tx.AddFiles(ctx, files, s.cfg.SnapshotProps, false); err != nil {
 			return xerrors.Errorf("add files: %w", err)
 		}
 
@@ -115,10 +113,9 @@ func (s *SinkSnapshot) processControlEvent(item abstract.ChangeItem) error {
 	case abstract.DropTableKind, abstract.TruncateTableKind:
 		tblIdent := s.createTableIdent(item)
 
-		// load table to emulate check for existence
-		_, err := s.catalog.LoadTable(ctx, tblIdent, s.cfg.Properties)
+		// Check if table exists; if not found or error, skip drop
+		_, err := s.catalog.LoadTable(ctx, tblIdent)
 		if err != nil {
-			// table exist, skip
 			return nil
 		}
 
@@ -173,9 +170,15 @@ func (s *SinkSnapshot) createTableIdent(item abstract.ChangeItem) table.Identifi
 func (s *SinkSnapshot) ensureTable(ctx context.Context, item abstract.ChangeItem) (*table.Table, error) {
 	tbl := s.createTableIdent(item)
 
-	existingTable, err := s.catalog.LoadTable(ctx, tbl, s.cfg.Properties)
+	existingTable, err := s.catalog.LoadTable(ctx, tbl)
 	if err == nil {
 		return existingTable, nil
+	}
+
+	// Ensure namespace exists
+	ns := table.Identifier{tbl[0]}
+	if exists, _ := s.catalog.CheckNamespaceExists(ctx, ns); !exists {
+		_ = s.catalog.CreateNamespace(ctx, ns, nil)
 	}
 
 	schema, err := ConvertToIcebergSchema(item.TableSchema)
@@ -223,20 +226,9 @@ func (s *SinkSnapshot) storeFile(name string) {
 }
 
 func NewSinkSnapshot(cfg *Destination, cp coordinator.Coordinator, transfer *model.Transfer) (*SinkSnapshot, error) {
-	var cat catalog.Catalog
-	if cfg.CatalogType == "rest" {
-		var err error
-		cat, err = rest.NewCatalog(
-			context.Background(),
-			cfg.CatalogType,
-			cfg.CatalogURI,
-			rest.WithAdditionalProps(cfg.Properties),
-		)
-		if err != nil {
-			return nil, xerrors.Errorf("unable to init catalog: %w", err)
-		}
-	} else if cfg.CatalogType == "glue" {
-		cat = glue.NewCatalog()
+	cat, err := cfg.NewCatalog()
+	if err != nil {
+		return nil, xerrors.Errorf("unable to init catalog: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

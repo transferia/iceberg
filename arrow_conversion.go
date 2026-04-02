@@ -156,6 +156,38 @@ func ToTimestamp(v interface{}) int64 {
 	return 0
 }
 
+// colTypeToIcebergType maps a transferia ColSchema to an Iceberg type.
+func colTypeToIcebergType(col abstract.ColSchema) iceberg.Type {
+	switch col.DataType {
+	case yt_schema.TypeInt64.String():
+		return iceberg.PrimitiveTypes.Int64
+	case yt_schema.TypeInt32.String():
+		return iceberg.PrimitiveTypes.Int32
+	case yt_schema.TypeInt16.String(), yt_schema.TypeInt8.String():
+		return iceberg.PrimitiveTypes.Int32
+	case yt_schema.TypeUint64.String(), yt_schema.TypeUint32.String():
+		return iceberg.PrimitiveTypes.Int64
+	case yt_schema.TypeUint16.String(), yt_schema.TypeUint8.String():
+		return iceberg.PrimitiveTypes.Int32
+	case yt_schema.TypeFloat32.String():
+		return iceberg.PrimitiveTypes.Float32
+	case yt_schema.TypeFloat64.String():
+		return iceberg.PrimitiveTypes.Float64
+	case yt_schema.TypeBytes.String():
+		return iceberg.PrimitiveTypes.Binary
+	case yt_schema.TypeString.String():
+		return iceberg.PrimitiveTypes.String
+	case yt_schema.TypeBoolean.String():
+		return iceberg.PrimitiveTypes.Bool
+	case yt_schema.TypeDate.String():
+		return iceberg.PrimitiveTypes.Date
+	case yt_schema.TypeDatetime.String(), yt_schema.TypeTimestamp.String():
+		return iceberg.PrimitiveTypes.TimestampTz
+	default:
+		return iceberg.PrimitiveTypes.String
+	}
+}
+
 // ConvertToIcebergSchema converts abstract.TableSchema to iceberg.Schema
 func ConvertToIcebergSchema(schema *abstract.TableSchema) (*iceberg.Schema, error) {
 	if schema == nil {
@@ -168,36 +200,7 @@ func ConvertToIcebergSchema(schema *abstract.TableSchema) (*iceberg.Schema, erro
 	nextID := 1 // probably shall use schema registry
 
 	for _, col := range schema.Columns() {
-		var fieldType iceberg.Type
-		switch col.DataType {
-		case yt_schema.TypeInt64.String():
-			fieldType = iceberg.PrimitiveTypes.Int64
-		case yt_schema.TypeInt32.String():
-			fieldType = iceberg.PrimitiveTypes.Int32
-		case yt_schema.TypeInt16.String(), yt_schema.TypeInt8.String():
-			fieldType = iceberg.PrimitiveTypes.Int32
-		case yt_schema.TypeUint64.String(), yt_schema.TypeUint32.String():
-			fieldType = iceberg.PrimitiveTypes.Int64
-		case yt_schema.TypeUint16.String(), yt_schema.TypeUint8.String():
-			fieldType = iceberg.PrimitiveTypes.Int32
-		case yt_schema.TypeFloat32.String():
-			fieldType = iceberg.PrimitiveTypes.Float32
-		case yt_schema.TypeFloat64.String():
-			fieldType = iceberg.PrimitiveTypes.Float64
-		case yt_schema.TypeBytes.String():
-			fieldType = iceberg.PrimitiveTypes.Binary
-		case yt_schema.TypeString.String():
-			fieldType = iceberg.PrimitiveTypes.String
-		case yt_schema.TypeBoolean.String():
-			fieldType = iceberg.PrimitiveTypes.Bool
-		case yt_schema.TypeDate.String():
-			fieldType = iceberg.PrimitiveTypes.Date
-		case yt_schema.TypeDatetime.String(), yt_schema.TypeTimestamp.String():
-			fieldType = iceberg.PrimitiveTypes.TimestampTz
-		default:
-			// JSON-based string
-			fieldType = iceberg.PrimitiveTypes.String
-		}
+		fieldType := colTypeToIcebergType(col)
 
 		field := iceberg.NestedField{
 			ID:       nextID,

@@ -4,8 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/apache/iceberg-go/catalog/glue"
-	"github.com/apache/iceberg-go/catalog/rest"
+	_ "github.com/apache/iceberg-go/io/gocloud"
 	"github.com/transferia/transferia/pkg/abstract/changeitem"
 
 	"github.com/apache/iceberg-go/catalog"
@@ -46,7 +45,7 @@ func (s *Storage) Ping() error {
 
 func (s *Storage) LoadTable(ctx context.Context, tid abstract.TableDescription, pusher abstract.Pusher) error {
 	tbl := table.Identifier{tid.Schema, tid.Name}
-	itable, err := s.cat.LoadTable(ctx, tbl, s.props)
+	itable, err := s.cat.LoadTable(ctx, tbl)
 	if err != nil {
 		return xerrors.Errorf("unable to load table: %v: %w", tbl, err)
 	}
@@ -114,7 +113,7 @@ func (s *Storage) LoadTable(ctx context.Context, tid abstract.TableDescription, 
 
 func (s *Storage) TableSchema(ctx context.Context, tid abstract.TableID) (*abstract.TableSchema, error) {
 	tbl := table.Identifier{tid.Namespace, tid.Name}
-	itable, err := s.cat.LoadTable(ctx, tbl, s.props)
+	itable, err := s.cat.LoadTable(ctx, tbl)
 	if err != nil {
 		return nil, xerrors.Errorf("unable to load table: %v: %w", tbl, err)
 	}
@@ -132,7 +131,7 @@ func (s *Storage) TableList(filter abstract.IncludeTableList) (abstract.TableMap
 		if filter != nil && !filter.Include(s.AsTableID(tbl)) {
 			continue
 		}
-		itable, err := s.cat.LoadTable(context.TODO(), tbl, s.props)
+		itable, err := s.cat.LoadTable(context.TODO(), tbl)
 		if err != nil {
 			return nil, xerrors.Errorf("unable to load table: %v: %w", tbl, err)
 		}
@@ -154,16 +153,35 @@ func (s *Storage) TableList(filter abstract.IncludeTableList) (abstract.TableMap
 	return res, nil
 }
 
-func (s *Storage) ExactTableRowsCount(table abstract.TableID) (uint64, error) {
-	return s.EstimateTableRowsCount(table)
+func (s *Storage) ExactTableRowsCount(tid abstract.TableID) (uint64, error) {
+	tbl := table.Identifier{tid.Namespace, tid.Name}
+	itable, err := s.cat.LoadTable(context.TODO(), tbl)
+	if err != nil {
+		return 0, xerrors.Errorf("unable to load table: %v: %w", tbl, err)
+	}
+	// Use scan to get accurate count (respects equality deletes / merge-on-read)
+	_, records, err := itable.Scan().ToArrowRecords(context.TODO())
+	if err != nil {
+		return 0, xerrors.Errorf("unable to scan table: %w", err)
+	}
+	totalCount := uint64(0)
+	for rec, err := range records {
+		if err != nil {
+			return 0, xerrors.Errorf("unable to read record: %w", err)
+		}
+		totalCount += uint64(rec.NumRows())
+		rec.Release()
+	}
+	return totalCount, nil
 }
 
 func (s *Storage) EstimateTableRowsCount(tid abstract.TableID) (uint64, error) {
 	tbl := table.Identifier{tid.Namespace, tid.Name}
-	itable, err := s.cat.LoadTable(context.TODO(), tbl, s.props)
+	itable, err := s.cat.LoadTable(context.TODO(), tbl)
 	if err != nil {
 		return 0, xerrors.Errorf("unable to load table: %v: %w", tbl, err)
 	}
+	// Use file-level counts for estimation (fast but doesn't account for deletes)
 	files, err := itable.Scan().PlanFiles(context.TODO())
 	if err != nil {
 		return 0, xerrors.Errorf("unable to plan files to read: %w", err)
@@ -177,7 +195,7 @@ func (s *Storage) EstimateTableRowsCount(tid abstract.TableID) (uint64, error) {
 
 func (s *Storage) TableExists(tid abstract.TableID) (bool, error) {
 	tbl := table.Identifier{tid.Namespace, tid.Name}
-	_, err := s.cat.LoadTable(context.TODO(), tbl, s.props)
+	_, err := s.cat.LoadTable(context.TODO(), tbl)
 	if err != nil {
 		return false, xerrors.Errorf("unable to load table: %v: %w", tbl, err)
 	}
@@ -241,15 +259,15 @@ func trimSuffix(s string) string {
 }
 
 func NewStorage(src *Source, logger log.Logger, registry metrics.Registry) (*Storage, error) {
-	var cat catalog.Catalog
-	if src.CatalogType == "rest" {
-		var err error
-		cat, err = rest.NewCatalog(context.Background(), src.CatalogType, src.CatalogURI)
-		if err != nil {
-			return nil, xerrors.Errorf("unable to init catalog: %w", err)
-		}
-	} else if src.CatalogType == "glue" {
-		cat = glue.NewCatalog()
+	// Source shares the same catalog config shape as Destination
+	dst := &Destination{
+		Properties:  src.Properties,
+		CatalogType: src.CatalogType,
+		CatalogURI:  src.CatalogURI,
+	}
+	cat, err := dst.NewCatalog()
+	if err != nil {
+		return nil, xerrors.Errorf("unable to init catalog: %w", err)
 	}
 	return &Storage{
 		cfg:      src,

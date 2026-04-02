@@ -1,6 +1,7 @@
 package iceberg
 
 import (
+	"context"
 	"fmt"
 	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 	"github.com/apache/iceberg-go/io"
@@ -28,9 +29,13 @@ func writeFile(fName string, tbl *table.Table, items []abstract.ChangeItem) erro
 	if len(items) == 0 {
 		return nil
 	}
-	fileIO, ok := tbl.FS().(io.WriteFileIO)
+	fs, err := tbl.FS(context.Background())
+	if err != nil {
+		return xerrors.Errorf("get filesystem: %w", err)
+	}
+	fileIO, ok := fs.(io.WriteFileIO)
 	if !ok {
-		return xerrors.Errorf("%T does not implement io.WriteFileIO", tbl.FS())
+		return xerrors.Errorf("%T does not implement io.WriteFileIO", fs)
 	}
 	fw, err := fileIO.Create(fName)
 	if err != nil {

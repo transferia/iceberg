@@ -1,0 +1,34 @@
+id: demo
+transfername: pg-to-iceberg-cdc
+description: "CDC replication from PostgreSQL to Iceberg v2"
+type: SNAPSHOT_AND_INCREMENT
+src:
+  id: pg-source
+  name: pg-source
+  type: pg
+  params: |
+    {
+      "Hosts": ["localhost"],
+      "Port": 5432,
+      "User": "postgres",
+      "Password": "postgres",
+      "Database": "demo",
+      "SlotID": "demo_cdc",
+      "KeeperSchema": "public"
+    }
+dst:
+  id: iceberg-target
+  name: iceberg-target
+  type: iceberg
+  params: |
+    {
+      "catalog_type": "rest",
+      "catalog_uri": "http://localhost:8181",
+      "properties": {
+        "s3.endpoint": "http://localhost:9000",
+        "s3.access-key-id": "admin",
+        "s3.secret-access-key": "password",
+        "s3.region": "us-east-1",
+        "s3.path-style-access": "true"
+      }
+    }

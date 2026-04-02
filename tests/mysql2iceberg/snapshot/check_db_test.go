@@ -15,6 +15,9 @@ func TestSnapshot(t *testing.T) {
 	source := mysqlrecipe.RecipeMysqlSource()
 	target, err := iceberg.DestinationRecipe()
 	require.NoError(t, err)
+
+	iceberg.CleanupTable(target, source.Database, "mysql_snapshot")
+
 	helpers.InitSrcDst(helpers.TransferID, source, target, TransferType)
 
 	defer func() {
@@ -28,5 +31,5 @@ func TestSnapshot(t *testing.T) {
 
 	rowsInDst, err := iceberg.DestinationRowCount(target, source.Database, "mysql_snapshot")
 	require.NoError(t, err)
-	require.Equal(t, rowsInDst, uint64(3))
+	require.Equal(t, uint64(3), rowsInDst)
 }

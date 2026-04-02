@@ -2,6 +2,8 @@ package snapshot
 
 import (
 	"context"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/transferia/iceberg"
@@ -14,13 +16,20 @@ import (
 	"github.com/transferia/transferia/tests/helpers"
 )
 
+func dumpDir() string {
+	_, filename, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(filename), "dump", "pg")
+}
+
 func TestSnapshot(t *testing.T) {
 	var (
 		TransferType = abstract.TransferTypeSnapshotOnly
-		source       = pgrecipe.RecipeSource(pgrecipe.WithInitDir("dump/pg"))
+		source       = pgrecipe.RecipeSource(pgrecipe.WithInitDir(dumpDir()), pgrecipe.WithoutPgDump())
 	)
 	target, err := iceberg.DestinationRecipe()
 	require.NoError(t, err)
+
+	iceberg.CleanupTable(target, "public", "__test")
 
 	helpers.InitSrcDst(helpers.TransferID, source, target, TransferType)
 
@@ -36,5 +45,5 @@ func TestSnapshot(t *testing.T) {
 
 	rowsInSrc, err := iceberg.DestinationRowCount(target, "public", "__test")
 	require.NoError(t, err)
-	require.Equal(t, rowsInSrc, uint64(16))
+	require.Equal(t, uint64(16), rowsInSrc)
 }

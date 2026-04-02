@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/apache/iceberg-go/catalog"
-	"github.com/apache/iceberg-go/catalog/glue"
-	"github.com/apache/iceberg-go/catalog/rest"
 	"github.com/apache/iceberg-go/table"
 
 	"github.com/transferia/transferia/library/go/core/xerrors"
@@ -118,13 +116,18 @@ func (s *SinkStreaming) ensureTable(ctx context.Context, item abstract.ChangeIte
 	tblIdent := s.createTableIdent(item)
 
 	// Try to load existing table
-	existingTable, err := s.catalog.LoadTable(ctx, tblIdent, s.cfg.Properties)
+	existingTable, err := s.catalog.LoadTable(ctx, tblIdent)
 	if err == nil {
-		s.lgr.Infof("table %s already exists: props: %v", tblIdent, s.cfg.Properties)
+		s.lgr.Infof("table %s already exists", tblIdent)
 		return existingTable, nil
 	}
 
-	// Create new table
+	// Ensure namespace exists, then create table
+	ns := table.Identifier{tblIdent[0]}
+	if exists, _ := s.catalog.CheckNamespaceExists(ctx, ns); !exists {
+		_ = s.catalog.CreateNamespace(ctx, ns, nil)
+	}
+
 	schema, err := ConvertToIcebergSchema(item.TableSchema)
 	if err != nil {
 		return nil, xerrors.Errorf("converting to IcebergSchema: %w", err)
@@ -250,20 +253,23 @@ func (s *SinkStreaming) commitTables() error {
 		}
 
 		// Extract schema and table name from tableID
-		tid, _ := abstract.ParseTableID(tableID)
+		tid, err := abstract.NewTableIDFromString(tableID)
+		if err != nil {
+			continue
+		}
 		if tid.Namespace == "" {
 			tid.Namespace = s.cfg.DefaultNamespace
 		}
 		// Load table
 		tblIdent := table.Identifier{tid.Namespace, tid.Name}
-		tbl, err := s.catalog.LoadTable(ctx, tblIdent, s.cfg.Properties)
+		tbl, err := s.catalog.LoadTable(ctx, tblIdent)
 		if err != nil {
 			continue
 		}
 
 		// Create transaction and add files
 		tx := tbl.NewTransaction()
-		if err := tx.AddFiles(files, s.cfg.SnapshotProps, false); err != nil {
+		if err := tx.AddFiles(ctx, files, s.cfg.SnapshotProps, false); err != nil {
 			return xerrors.Errorf("add files for table %s: %w", tableID, err)
 		}
 
@@ -327,7 +333,7 @@ func (s *SinkStreaming) parseTableID(tableID string) []string {
 // clearState removes committed files from coordinator
 func (s *SinkStreaming) clearState(tableID string) error {
 	s.mu.Lock()
-	// Get all keys for this table
+	defer s.mu.Unlock()
 
 	state, err := s.cp.GetTransferState(s.transfer.ID)
 	if err != nil {
@@ -337,7 +343,6 @@ func (s *SinkStreaming) clearState(tableID string) error {
 	// Clear files for this table
 	for key := range state {
 		if extractTableIDFromKey(key) == tableID {
-			// Set empty array for this key
 			if err := s.cp.RemoveTransferState(s.transfer.ID, []string{key}); err != nil {
 				return xerrors.Errorf("clear files for key %s: %w", key, err)
 			}
@@ -346,27 +351,15 @@ func (s *SinkStreaming) clearState(tableID string) error {
 
 	// Clear local files cache
 	s.files[tableID] = []string{}
-	s.mu.Unlock()
 
 	return nil
 }
 
 // NewSinkStreaming creates a new streaming sink
 func NewSinkStreaming(cfg *Destination, cp coordinator.Coordinator, transfer *model.Transfer, logger log.Logger) (*SinkStreaming, error) {
-	var cat catalog.Catalog
-	if cfg.CatalogType == "rest" {
-		var err error
-		cat, err = rest.NewCatalog(
-			context.Background(),
-			cfg.CatalogType,
-			cfg.CatalogURI,
-			rest.WithAdditionalProps(cfg.Properties),
-		)
-		if err != nil {
-			return nil, xerrors.Errorf("unable to init catalog: %w", err)
-		}
-	} else if cfg.CatalogType == "glue" {
-		cat = glue.NewCatalog()
+	cat, err := cfg.NewCatalog()
+	if err != nil {
+		return nil, xerrors.Errorf("unable to init catalog: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

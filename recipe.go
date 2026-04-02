@@ -1,6 +1,7 @@
 package iceberg
 
 import (
+	"context"
 	"os"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	go_iceberg "github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/io"
+	iceTable "github.com/apache/iceberg-go/table"
 
 	"github.com/transferia/transferia/library/go/core/xerrors"
 )
@@ -51,6 +53,16 @@ func DestinationRecipe() (*Destination, error) {
 	return nil, xerrors.New("recipe not supported")
 }
 
+// CleanupTable drops an Iceberg table if it exists (for test cleanup).
+func CleanupTable(target *Destination, schema, tableName string) {
+	cat, err := target.NewCatalog()
+	if err != nil {
+		return
+	}
+	ident := iceTable.Identifier{schema, tableName}
+	_ = cat.DropTable(context.Background(), ident)
+}
+
 func DestinationRowCount(target *Destination, schema, table string) (uint64, error) {
 	src := &Source{
 		Properties:  target.Properties,
@@ -70,4 +82,20 @@ func DestinationRowCount(target *Destination, schema, table string) (uint64, err
 		return 0, xerrors.Errorf("could not get exact rows count: %w", err)
 	}
 	return rowsInSrc, nil
+}
+
+// LoadTable loads an Iceberg table by namespace and name. Useful for
+// inspecting table metadata, snapshot summary, and file statistics.
+// LoadTable loads an Iceberg table by namespace and name. Useful for
+// inspecting table metadata, snapshot summary, and file statistics.
+func LoadTable(target *Destination, namespace, tableName string) (*iceTable.Table, error) {
+	cat, err := target.NewCatalog()
+	if err != nil {
+		return nil, xerrors.Errorf("unable to init catalog: %w", err)
+	}
+	tbl, err := cat.LoadTable(context.Background(), iceTable.Identifier{namespace, tableName})
+	if err != nil {
+		return nil, xerrors.Errorf("unable to load table: %w", err)
+	}
+	return tbl, nil
 }
