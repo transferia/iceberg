@@ -1,8 +1,3 @@
-// Skip in CI: substrait-go v7.6.0 panics during init() on linux/amd64
-// due to a go-yaml bug (strings.Repeat with negative count).
-// Run locally with: go test -tags cdc_replication ./tests/pg2iceberg/replication/
-//go:build cdc_replication
-
 package replication
 
 import (
