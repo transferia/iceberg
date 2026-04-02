@@ -28,6 +28,9 @@ func TestEqualityDeleteReadPerf(t *testing.T) {
 	if os.Getenv("CATALOG_ENDPOINT") == "" {
 		t.Skip("CATALOG_ENDPOINT not set; start infra with 'make recipe'")
 	}
+	if os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" {
+		t.Skip("skipped in CI; run locally")
+	}
 
 	ctx := context.Background()
 

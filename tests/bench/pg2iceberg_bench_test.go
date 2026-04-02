@@ -47,6 +47,7 @@ func TestBenchmarkSmoke(t *testing.T) {
 //	go test -run TestBenchmarkInsertOnly -timeout=30m -v ./tests/bench/
 func TestBenchmarkInsertOnly(t *testing.T) {
 	skipIfNoInfra(t)
+	skipBenchInCI(t)
 	result := runBenchmark(t, DefaultConfig(ProfileInsertOnly))
 	t.Log(result.String())
 }
@@ -57,6 +58,7 @@ func TestBenchmarkInsertOnly(t *testing.T) {
 //	go test -run TestBenchmarkInsertHeavy -timeout=30m -v ./tests/bench/
 func TestBenchmarkInsertHeavy(t *testing.T) {
 	skipIfNoInfra(t)
+	skipBenchInCI(t)
 	result := runBenchmark(t, DefaultConfig(ProfileInsertHeavy))
 	t.Log(result.String())
 }
@@ -67,6 +69,7 @@ func TestBenchmarkInsertHeavy(t *testing.T) {
 //	go test -run TestBenchmarkBalanced -timeout=30m -v ./tests/bench/
 func TestBenchmarkBalanced(t *testing.T) {
 	skipIfNoInfra(t)
+	skipBenchInCI(t)
 	result := runBenchmark(t, DefaultConfig(ProfileBalanced))
 	t.Log(result.String())
 }
@@ -76,6 +79,7 @@ func TestBenchmarkBalanced(t *testing.T) {
 //	go test -run TestBenchmarkAll -timeout=60m -v ./tests/bench/
 func TestBenchmarkAll(t *testing.T) {
 	skipIfNoInfra(t)
+	skipBenchInCI(t)
 
 	profiles := []LoadProfile{ProfileInsertOnly, ProfileInsertHeavy, ProfileBalanced}
 	results := make([]*BenchmarkResult, 0, len(profiles))
@@ -159,5 +163,12 @@ func skipIfNoInfra(t *testing.T) {
 	t.Helper()
 	if os.Getenv("CATALOG_ENDPOINT") == "" {
 		t.Skip("CATALOG_ENDPOINT not set; start infra with 'make recipe' first")
+	}
+}
+
+func skipBenchInCI(t *testing.T) {
+	t.Helper()
+	if os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" {
+		t.Skip("benchmark skipped in CI (too slow for GitHub Actions); run locally")
 	}
 }

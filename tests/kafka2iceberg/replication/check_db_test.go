@@ -19,6 +19,21 @@ import (
 	ytschema "go.ytsaurus.tech/yt/go/schema"
 )
 
+// waitForRows polls DestinationRowCount until rows > 0 or timeout.
+func waitForRows(t *testing.T, target *iceberg.Destination, namespace, table string, timeout time.Duration) uint64 {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		rows, err := iceberg.DestinationRowCount(target, namespace, table)
+		if err == nil && rows > 0 {
+			return rows
+		}
+		time.Sleep(2 * time.Second)
+	}
+	t.Fatalf("timed out waiting for rows in %s.%s after %s", namespace, table, timeout)
+	return 0
+}
+
 var parserFields = []abstract.ColSchema{
 	{ColumnName: "id", DataType: ytschema.TypeInt32.String(), PrimaryKey: true},
 	{ColumnName: "level", DataType: ytschema.TypeString.String()},
@@ -90,10 +105,7 @@ func TestReplication(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	time.Sleep(5 * time.Second)
-
-	rowsInDst, err := iceberg.DestinationRowCount(target, target.DefaultNamespace, source.Topic)
-	require.NoError(t, err)
+	rowsInDst := waitForRows(t, target, target.DefaultNamespace, source.Topic, 30*time.Second)
 	require.True(t, rowsInDst > 0, "expected rows in destination, got 0")
 }
 
@@ -159,11 +171,7 @@ func TestMultiPartitionReplication(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Wait for commit interval to flush all data
-	time.Sleep(10 * time.Second)
-
-	rowsInDst, err := iceberg.DestinationRowCount(target, target.DefaultNamespace, source.Topic)
-	require.NoError(t, err)
+	rowsInDst := waitForRows(t, target, target.DefaultNamespace, source.Topic, 30*time.Second)
 	require.True(t, rowsInDst > 0, "expected rows from multi-partition ingestion, got 0")
 	t.Logf("Multi-partition test: %d rows landed from %d total messages across %d partitions",
 		rowsInDst, totalMessages, numPartitions)
@@ -234,11 +242,7 @@ func TestMultiPartitionHighThroughput(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Wait for multiple commit cycles
-	time.Sleep(15 * time.Second)
-
-	rowsInDst, err := iceberg.DestinationRowCount(target, target.DefaultNamespace, source.Topic)
-	require.NoError(t, err)
+	rowsInDst := waitForRows(t, target, target.DefaultNamespace, source.Topic, 30*time.Second)
 	require.True(t, rowsInDst > 0, "expected rows from high-throughput test, got 0")
 	t.Logf("High-throughput test: %d rows landed from %d total messages across %d partitions",
 		rowsInDst, totalMessages, numPartitions)
