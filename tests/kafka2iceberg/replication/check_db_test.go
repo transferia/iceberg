@@ -105,7 +105,9 @@ func TestReplication(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	rowsInDst := waitForRows(t, target, target.DefaultNamespace, source.Topic, 30*time.Second)
+	// Kafka parser appends "_unparsed" to the topic name for the table
+	tableName := source.Topic + "_unparsed"
+	rowsInDst := waitForRows(t, target, target.DefaultNamespace, tableName, 30*time.Second)
 	require.True(t, rowsInDst > 0, "expected rows in destination, got 0")
 }
 
@@ -171,7 +173,8 @@ func TestMultiPartitionReplication(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	rowsInDst := waitForRows(t, target, target.DefaultNamespace, source.Topic, 30*time.Second)
+	tableName := source.Topic + "_unparsed"
+	rowsInDst := waitForRows(t, target, target.DefaultNamespace, tableName, 30*time.Second)
 	require.True(t, rowsInDst > 0, "expected rows from multi-partition ingestion, got 0")
 	t.Logf("Multi-partition test: %d rows landed from %d total messages across %d partitions",
 		rowsInDst, totalMessages, numPartitions)
@@ -242,7 +245,8 @@ func TestMultiPartitionHighThroughput(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	rowsInDst := waitForRows(t, target, target.DefaultNamespace, source.Topic, 30*time.Second)
+	tableName := source.Topic + "_unparsed"
+	rowsInDst := waitForRows(t, target, target.DefaultNamespace, tableName, 30*time.Second)
 	require.True(t, rowsInDst > 0, "expected rows from high-throughput test, got 0")
 	t.Logf("High-throughput test: %d rows landed from %d total messages across %d partitions",
 		rowsInDst, totalMessages, numPartitions)
